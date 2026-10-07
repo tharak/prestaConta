@@ -7,6 +7,8 @@ import { AccountStore } from '../site/data.js';
 import { PublishedStore } from '../site/published.js';
 import { publishStore } from '../scripts/refresh-data.mjs';
 import { csv, receipt, paid } from './fixtures.mjs';
+import { gunzipSync } from 'node:zlib';
+import { aggregateParties } from '../site/party-overview.js';
 
 test('publicação compactada preserva valores, prestação, fonte e linhas auditáveis', async () => {
   const destination = await mkdtemp(join(tmpdir(), 'prestaconta-publication-'));
@@ -66,4 +68,19 @@ test('médias de outra atualização são rejeitadas antes de comparar valores',
     await assert.rejects(published.benchmark(account.id, account.statements[0].id), /atualizadas/);
     assert.equal(published.benchmarkData, undefined);
   } finally { globalThis.fetch = originalFetch; }
+});
+test('resumo dos órgãos é publicado compactado com datas e totais auditáveis', async () => {
+  const destination = await mkdtemp(join(tmpdir(), 'prestaconta-overview-'));
+  try {
+    const store = new AccountStore('parties');
+    const parser = store.reader('receipts', 'receitas.csv'); parser.push(csv([receipt()])); parser.finish();
+    store.loadedAt = '2026-10-07T08:00:00Z'; store.source = 'https://cdn.tse.jus.br/estatistica/teste.zip';
+    const index = await publishStore(store, destination);
+    assert.equal(index.overview, 'overview.json.gz');
+    const overview = JSON.parse(gunzipSync(await readFile(join(destination, index.overview))).toString());
+    assert.equal(overview.updatedAt, index.updatedAt);
+    assert.equal(overview.source, store.source);
+    assert.equal(overview.tables.receipts.filename, 'receitas.csv');
+    assert.equal(aggregateParties(overview).parties[0].totals.receipts.knownCents, 123456);
+  } finally { await rm(destination, { recursive: true, force: true }); }
 });

@@ -1,6 +1,6 @@
 # PrestaConta
 
-Página em português para consultar contas eleitorais de 2026, uma conta por vez. **GitHub Actions busca os arquivos atuais no TSE diariamente**, processa as contas e publica uma versão datada no **GitHub Pages**. Nenhum dado eleitoral é gravado no histórico Git. Os dados processados existem apenas na publicação; o navegador carrega cada conta sob demanda.
+Página em português com visão geral dos órgãos partidários nas eleições de 2026. O gráfico inicial reúne os totais de cada partido e as categorias de origem das receitas; a consulta de contas e candidaturas fica em `contas.html`. **GitHub Actions busca os arquivos atuais no TSE diariamente**, processa as contas e publica uma versão datada no **GitHub Pages**. Nenhum dado eleitoral é gravado no histórico Git. Os dados processados existem apenas na publicação. A tela inicial consulta um resumo compactado dos órgãos; a consulta individual carrega cada conta sob demanda.
 
 Fonte primária: [Prestação de Contas Eleitorais — 2026, TSE](https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-2026). A fonte identifica a licença como Creative Commons Atribuição e o sistema de origem como SPCE.
 
@@ -25,8 +25,8 @@ npm run build
 2. O workflow consulta o catálogo CKAN do TSE usando os identificadores oficiais dos dois recursos. As URLs atuais dos ZIP vêm desse catálogo.
 3. O processamento usa HTTP Range para baixar somente os CSV nacionais de receitas, despesas contratadas e despesas pagas. Arquivos estaduais e tabelas de doadores originários não são somados.
 4. A leitura verifica CRC32, tamanho, estrutura do CSV e valores monetários. A publicação ocorre somente após leitura completa de ambas as bases; falhas preservam a publicação anterior.
-5. Cada conta vira um JSON compactado separado, junto de um índice com nomes e metadados e um arquivo de médias agregadas por grupo. Esses arquivos são gerados em `dist/data/`, ignorado pelo Git, e enviados somente como artefato de publicação. ZIP, CSV e JSON eleitorais não são commitados. O histórico contém apenas código, configuração e testes sintéticos.
-6. A página carrega os índices de candidaturas e órgãos partidários automaticamente, em paralelo, e carrega os dados de uma conta apenas quando ela é aberta. Mantém até cinco contas na memória da aba e rejeita dados de uma versão diferente do índice. Não há IndexedDB, localStorage ou service worker.
+5. Cada conta vira um JSON compactado separado, junto de um índice com nomes e metadados, um arquivo de médias agregadas por grupo e `parties/overview.json.gz`, o resumo dos órgãos com totais por prestação, fonte e origem. Esses arquivos são gerados em `dist/data/`, ignorado pelo Git, e enviados somente como artefato de publicação. ZIP, CSV e JSON eleitorais não são commitados. O histórico contém apenas código, configuração e testes sintéticos.
+6. A página inicial carrega automaticamente o manifesto e o resumo dos órgãos partidários. Em `contas.html`, os índices de candidaturas e órgãos são carregados em paralelo, e os dados de uma conta só quando ela é aberta. Mantém até cinco contas na memória da aba e rejeita dados de uma versão diferente do índice. Não há IndexedDB, localStorage ou service worker.
 
 **Recarregar a publicação não força uma consulta nova ao TSE.** Os valores são os da última execução bem-sucedida, com data de obtenção e de geração dos CSV. Para atualizar imediatamente, execute o workflow **Publicar GitHub Pages** em Actions. O próprio TSE pode servir arquivos por cache; as datas de geração são preservadas.
 
@@ -73,6 +73,14 @@ gh repo create prestaConta --public --source=. --remote=origin --push
 
 Em **Settings → Pages → Build and deployment**, selecione **GitHub Actions**. Execute o workflow **Publicar GitHub Pages** ou envie um novo commit para `main`. O caminho previsto, para o usuário `tharak`, é `https://tharak.github.io/prestaConta/`; ele só estará disponível depois da criação do repositório e de uma publicação bem-sucedida.
 
+## Visão geral dos partidos
+
+A página inicial tem colunas agrupadas por partido, em ordem alfabética, para receitas declaradas, despesas contratadas, despesas pagas e categorias oficiais de origem da verba. A seleção de fontes troca a decomposição por `DS_FONTE_RECEITA`. Categorias compõem a receita, sem serem adicionadas ao total. A legenda permite ocultar séries; a sigla abre os totais do partido; a tabela de valores fica recolhida. Há filtros de UF, esfera, tipo de prestação e turno quando informado.
+
+O agrupamento inclui todos os órgãos por padrão. São valores **brutos de movimentação**, não uma consolidação de recursos novos: transferências entre diretórios podem reaparecer como receita. Não se deduzem repasses sem conciliação. Um filtro permite ver apenas a esfera nacional. Candidaturas não entram nesses totais.
+
+Por conta, considera-se apenas a prestação mais recente compatível com o recorte, pela data; em empate, final precede parcial e relatório financeiro. A opção inicial pode reunir tipos e datas diferentes entre órgãos; a cobertura é explicitada. `Parcial` e `PARCIAL` são unificados para associar os três CSV da mesma prestação. Datas e turnos distintos permanecem separados na consulta individual. Valores ausentes são identificados e a soma conhecida é marcada como parcial; tabelas sem lançamentos não viram zero. Categorias sem lançamentos não recebem zero presumido quando o total de receitas é incompleto.
+
 ## Interpretação
 
 - Receitas, despesas contratadas e despesas pagas são bases distintas. Nunca somamos contratado e pago nem calculamos saldo a partir dessas tabelas.
@@ -95,4 +103,4 @@ Em **Settings → Pages → Build and deployment**, selecione **GitHub Actions**
 
 Os testes de parser, integridade dos ZIP, associação de pagamentos, prestações separadas, atualização de publicação e relay são independentes da disponibilidade do TSE. Valide uma execução completa e o comportamento da página publicada antes de compartilhar o site.
 
-Validação local realizada com os arquivos oficiais obtidos em 7 de outubro de 2026: processamento das duas bases, 34 testes automatizados e navegação de candidaturas e órgãos partidários no navegador, incluindo carregamento automático das duas bases, médias, filtro de repasses, ordenação, popup, tela móvel e texto ampliado em 200%. O navegador de verificação não ofereceu WebMCP; a validação dessa integração opcional ficou indisponível, sem afetar a interface.
+Validação local realizada com os arquivos oficiais obtidos em 7 de outubro de 2026: processamento das duas bases, 41 testes automatizados e navegação de candidaturas e órgãos partidários no navegador, incluindo gráfico por partido, filtros, legenda, popup, consulta de contas, tela móvel e texto ampliado em 200%. O navegador de verificação não ofereceu WebMCP; a validação dessa integração opcional ficou indisponível, sem afetar a interface.

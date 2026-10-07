@@ -6,7 +6,7 @@ export const TABLES = Object.freeze({
   paid: { label: 'Despesas pagas', prefix: 'despesas_pagas', amounts: ['VR_PAGTO_DESPESA', 'VR_DESPESA_PAGA'], dates: ['DT_PAGTO_DESPESA', 'DT_PAGAMENTO'] },
 });
 
-const EMPTY = new Set(['', '#NULO#', '#NE#', 'NULO', 'NULL', '-1', '-3', '-4']);
+const EMPTY = new Set(['', '#NULO#', '#NULO', '#NE#', '#NE', 'NULO', 'NULL', '-1', '-3', '-4']);
 export function clean(value) {
   const text = String(value ?? '').trim();
   return EMPTY.has(text.toUpperCase()) ? '' : text;
@@ -15,6 +15,10 @@ export function fold(value) {
   return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
 }
 export const alphabetic = (a, b) => String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base', numeric: true });
+export function statementType(value) {
+  const text = clean(value);
+  return ({ parcial: 'Parcial', final: 'Final', 'relatorio financeiro': 'Relatório Financeiro' })[fold(text)] || text || 'Tipo não informado';
+}
 
 // Valores monetários são inteiros em centavos, nunca ponto flutuante acumulado.
 export function moneyToCents(value) {
@@ -153,7 +157,7 @@ export class AccountStore {
         sphere: get('DS_ESFERA_PARTIDARIA', 'DS_ESFERA_PART_PRESTADOR', 'DS_ESFERA_PART'), locality: get('NM_UE'),
       };
       for (const [key, value] of Object.entries(fields)) if (value && !account[key]) account[key] = value;
-      const type = get('TP_PRESTACAO_CONTAS') || 'Tipo não informado';
+      const type = statementType(get('TP_PRESTACAO_CONTAS'));
       const date = get('DT_PRESTACAO_CONTAS');
       const turn = get('ST_TURNO', 'NR_TURNO');
       const statementId = JSON.stringify([type, date, turn]);

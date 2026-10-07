@@ -1,7 +1,7 @@
 import { AccountStore } from './data.js';
 import { cohortKey, counterpartyGroups, sortedTransactions } from './analytics.js';
 
-async function json(url, signal) {
+export async function json(url, signal) {
   let response;
   try { response = await fetch(url, { signal, cache: 'no-store', credentials: 'omit' }); }
   catch { throw new Error('Não foi possível carregar a publicação. Verifique sua conexão e tente novamente.'); }
