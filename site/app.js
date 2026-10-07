@@ -391,13 +391,14 @@ async function renderTransactions() {
     $('transaction-panel').setAttribute('aria-busy', 'false');
   } catch (error) { if (version === state.transactionVersion) { $('transaction-panel').setAttribute('aria-busy', 'false'); showError(error.message); } }
 }
-$('load').addEventListener('click', () => load(undefined, true));
+$('load').addEventListener('click', () => { $('methodology-dialog').close(); load(undefined, true); });
 $('cancel').addEventListener('click', () => { finishLoading(); setStatus(state.loaded ? `Carregamento cancelado. Continua visível a base carregada em ${timestamp(state.loaded.loadedAt)}.` : 'Carregamento cancelado. Nenhum dado foi carregado.'); });
 $('file').addEventListener('change', () => {
   const file = $('file').files[0];
   if (!file) return;
   if (!file.name.toLowerCase().endsWith('.zip')) { showError('Selecione o arquivo ZIP original do TSE.'); return; }
   $('file-name').textContent = file.name;
+  $('methodology-dialog').close();
   load(file);
   $('file').value = '';
 });
