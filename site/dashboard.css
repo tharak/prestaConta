@@ -4,3 +4,18 @@
 .totals-context{font-size:.8125rem;color:var(--muted);line-height:1.6;margin-bottom:12px}
 
 .overview-filters>div,.chart-heading>div{min-width:0}.overview-filters select,.chart-heading select{max-width:100%}@media(max-width:700px){.overview-filters>div{min-width:0;width:100%;flex:0 0 100%}.chart-heading>div:last-child{min-width:0;width:100%}}
+
+.filter-options{margin:18px 0 12px}.filter-options summary{color:var(--accent);font-size:.8125rem;font-weight:600}.filter-options summary span{color:var(--muted);font-weight:400;margin-left:12px}.filter-options[open]{padding-bottom:8px;border-bottom:1px solid var(--line)}.overall-totals>div{border-top:3px solid #3c71b1;padding-top:20px}.overall-totals>div:last-child{border-top-color:#cd7b32}.chart-scroll-hint{font-size:.75rem;color:var(--accent);text-align:right;margin-top:14px}.party-label{font-size:12px}.chart-legend{gap:8px}.dashboard-intro{padding:32px 0 26px}.dashboard-intro h1{font-size:clamp(2rem,3.2vw,2.8rem)}
+@media(min-width:1400px){body>.header,body>main,body>footer{max-width:1640px}}
+@media(max-width:700px){.filter-options summary span{display:block;margin:6px 0 0}.chart-scroll-hint{text-align:left}.overall-totals>div{padding-top:18px}.overall-totals>div:first-child{padding-top:18px}}
+
+.resource-title{margin:16px 0 8px;font-size:.75rem!important}
+.resource-totals{display:flex;width:100%;height:12px;overflow:hidden;border-radius:4px;background:#edf2f3}
+.resource-totals:has(.empty-value){height:auto;background:none}
+.resource-segment{flex-shrink:0;height:100%;padding:0;border-radius:0;min-width:0}
+.resource-segment:hover,.resource-segment:focus-visible{filter:brightness(.8);outline:2px solid var(--ink);outline-offset:-2px}
+.receipt-segment{cursor:pointer;transition:opacity .12s}
+.receipt-segment:hover,.receipt-segment:focus{opacity:.75;outline:2px solid var(--ink);outline-offset:1px}
+.receipt-breakdown{margin:18px 0 0;padding:16px;background:#f7faf9;border-radius:8px}
+.receipt-breakdown h3{font-size:.875rem}
+.receipt-breakdown .origin-mini-row strong{font-size:1rem}

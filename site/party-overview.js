@@ -38,6 +38,7 @@ function collectGroups(target, groups) {
 export function aggregateParties(data, filters = {}) {
   const parties = new Map();
   const totals = Object.fromEntries(Object.keys(TABLES).map((kind) => [kind, total(Boolean(data.tables[kind]))]));
+  const origins = new Map(), sources = new Map();
   const types = new Map(); const dates = new Set(); let accounts = 0; let undated = 0;
   for (const account of data.accounts) {
     if ((filters.uf && account.uf !== filters.uf) || (filters.sphere && account.sphere !== filters.sphere)) continue;
@@ -50,12 +51,15 @@ export function aggregateParties(data, filters = {}) {
     if (dateKey(statement.date)) dates.add(statement.date); else undated++;
     for (const kind of Object.keys(TABLES)) { collect(party.totals[kind], statement.totals[kind]); collect(totals[kind], statement.totals[kind]); }
     collectGroups(party.sources, statement.sources); collectGroups(party.origins, statement.origins);
+    collectGroups(sources, statement.sources); collectGroups(origins, statement.origins);
     parties.set(account.party, party);
   }
   const rows = [...parties.values()].sort((a, b) => alphabetic(a.party, b.party)).map((party) => ({ ...party,
     sources: [...party.sources.values()].sort((a, b) => alphabetic(a.name, b.name)), origins: [...party.origins.values()].sort((a, b) => alphabetic(a.name, b.name)) }));
   const sortedDates = [...dates].sort((a, b) => dateKey(a).localeCompare(dateKey(b)));
   return { parties: rows, totals, accounts, undated, types: Object.fromEntries(types),
+    origins: [...origins.values()].sort((a, b) => alphabetic(a.name, b.name)),
+    sources: [...sources.values()].sort((a, b) => alphabetic(a.name, b.name)),
     firstDate: sortedDates[0] || '', lastDate: sortedDates.at(-1) || '',
     categories: { sources: [...new Set(rows.flatMap((p) => p.sources.map((g) => g.name)))].sort(alphabetic),
       origins: [...new Set(rows.flatMap((p) => p.origins.map((g) => g.name)))].sort(alphabetic) } };

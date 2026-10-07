@@ -73,3 +73,29 @@ test('recorte vazio não é preenchido com valores inventados e candidaturas fic
   assert.equal(result.parties.length, 0); assert.equal(result.totals.receipts.count, 0);
   assert.throws(() => createPartyOverview(new AccountStore('candidates')), /órgãos partidários/);
 });
+
+test('totais por origem e fonte respeitam o recorte e não somam prestações anteriores', () => {
+  const store = new AccountStore('parties');
+  ingest(store, 'receipts', [
+    receipt({ VR_RECEITA: '999,00', DT_PRESTACAO_CONTAS: '01/09/2026', DS_ORIGEM_RECEITA: 'Origem anterior' }),
+    receipt({ VR_RECEITA: '100,00', DS_ORIGEM_RECEITA: 'Doações', DS_FONTE_RECEITA: 'Outros Recursos' }),
+    receipt({ SQ_PRESTADOR_CONTAS: 'OUTRO-PARTIDO', SG_PARTIDO: 'SIGLA B', SG_UF: 'RJ', VR_RECEITA: '200,00', DS_ORIGEM_RECEITA: 'Doações', DS_FONTE_RECEITA: 'Outros Recursos' }),
+    receipt({ SQ_PRESTADOR_CONTAS: 'OUTRO-PARTIDO', SG_PARTIDO: 'SIGLA B', SG_UF: 'RJ', VR_RECEITA: '-10,00', DS_ORIGEM_RECEITA: 'Repasses', DS_FONTE_RECEITA: 'Fundo Partidário' }),
+    receipt({ SQ_PRESTADOR_CONTAS: 'OUTRO-PARTIDO', SG_PARTIDO: 'SIGLA B', SG_UF: 'RJ', VR_RECEITA: '#NULO#', DS_ORIGEM_RECEITA: 'Repasses', DS_FONTE_RECEITA: 'Fundo Partidário' }),
+  ]);
+  const data = createPartyOverview(store);
+  const all = aggregateParties(data);
+  assert.deepEqual(all.origins, [
+    { name: 'Doações', cents: 30000, count: 2, missing: 0 },
+    { name: 'Repasses', cents: -1000, count: 2, missing: 1 },
+  ]);
+  assert.equal(all.sources.find((group) => group.name === 'Outros Recursos').cents, 30000);
+  assert.equal(all.sources.find((group) => group.name === 'Fundo Partidário').missing, 1);
+  assert.equal(all.origins.reduce((sum, group) => sum + group.cents, 0), all.totals.receipts.knownCents);
+  const filtered = aggregateParties(data, { uf: 'RJ' });
+  assert.equal(filtered.origins.find((group) => group.name === 'Doações').cents, 20000);
+  assert.equal(filtered.sources.find((group) => group.name === 'Outros Recursos').cents, 20000);
+  const empty = aggregateParties(data, { uf: 'INEXISTENTE' });
+  assert.deepEqual(empty.origins, []);
+  assert.deepEqual(empty.sources, []);
+});
