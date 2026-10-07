@@ -1,7 +1,7 @@
 import { json } from './published.js';
 import { config } from './config.js';
 import { aggregateParties, chartValue } from './party-overview.js';
-import { TABLES } from './data.js';
+import { TABLES, moneyToCents } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -56,6 +56,7 @@ async function load() {
     fillSelect('uf', data.options.uf, '', 'Todo o Brasil');
     fillSelect('sphere', data.options.sphere, '', 'Todas as esferas');
     fillSelect('statement-type', data.options.type, 'latest', 'Última de cada órgão');
+    for (const id of ['minimum-value', 'minimum-kind', 'clear-minimum']) $(id).disabled = false;
     const turns = data.options.turn;
     $('turn').replaceChildren(new Option('Todos os turnos declarados', '*'));
     for (const value of turns) $('turn').add(new Option(value ? `${value}º turno` : 'Não informado no arquivo', value));
@@ -72,10 +73,21 @@ async function load() {
 }
 function render() {
   if (!data) return;
-  const filters = { uf: $('uf').value, sphere: $('sphere').value, type: $('statement-type').value };
+  let minimum;
+  try {
+    const value = $('minimum-value').value.trim();
+    if (value.startsWith('-')) throw new Error('O valor mínimo deve ser zero ou positivo.');
+    if (value && !/^-?[\d.,]+$/.test(value)) throw new Error('Informe um valor em reais, como 100.000,00.');
+    minimum = moneyToCents(value) ?? 0;
+    if (minimum < 0) throw new Error('O valor mínimo deve ser zero ou positivo.');
+    $('minimum-value').setAttribute('aria-invalid', 'false'); $('minimum-error').hidden = true;
+  } catch (error) {
+    $('minimum-value').setAttribute('aria-invalid', 'true'); $('minimum-error').textContent = error.message; $('minimum-error').hidden = false; return;
+  }
+  const filters = { uf: $('uf').value, sphere: $('sphere').value, type: $('statement-type').value, minimumCents: minimum, minimumKind: $('minimum-kind').value };
   if ($('turn').value !== '*') filters.turn = $('turn').value;
   result = aggregateParties(data, filters);
-  $('filter-context').textContent = [$('uf').selectedOptions[0].textContent, $('sphere').selectedOptions[0].textContent, $('statement-type').selectedOptions[0].textContent, ...($('turn-control').hidden ? [] : [$('turn').selectedOptions[0].textContent])].join(' · ');
+  $('filter-context').textContent = [$('uf').selectedOptions[0].textContent, $('sphere').selectedOptions[0].textContent, $('statement-type').selectedOptions[0].textContent, ...($('turn-control').hidden ? [] : [$('turn').selectedOptions[0].textContent]), ...(minimum > 0 ? [`${$('minimum-kind').selectedOptions[0].textContent} ≥ ${money(minimum)}`] : [])].join(' · ');
   const types = Object.entries(result.types).map(([type, count]) => `${type}: ${number(count)}`).join(' · ');
   const dates = result.firstDate ? `Prestações de ${result.firstDate} a ${result.lastDate}.` : 'Datas de prestação não disponíveis.';
   $('coverage').textContent = `${number(result.parties.length)} partidos · ${number(result.accounts)} contas de órgãos. ${dates} ${types}` + (result.undated ? ` · ${number(result.undated)} sem data informada.` : '');
@@ -169,7 +181,7 @@ function renderChart() {
   const container = $('party-chart'); container.replaceChildren();
   const visible = series.filter((item) => item.kind && !hiddenSeries.has(item.key));
   $('chart-scroll-hint').hidden = true;
-  if (!result.parties.length || !visible.length) { container.append(node('p', !result.parties.length ? 'Nenhuma conta de órgão neste recorte. Experimente outro estado, esfera ou tipo de prestação.' : 'Ative uma categoria nos filtros do gráfico para exibir as colunas.', 'chart-placeholder')); return; }
+  if (!result.parties.length || !visible.length) { container.append(node('p', !result.parties.length ? 'Nenhum partido atende aos filtros. Reduza o valor mínimo ou ajuste o recorte.' : 'Ative uma categoria nos filtros do gráfico para exibir as colunas.', 'chart-placeholder')); return; }
   const field = compositionField;
   const width = Math.max(620, result.parties.length * 70 + 106, container.clientWidth);
   $('chart-scroll-hint').hidden = width <= container.clientWidth;
@@ -277,7 +289,9 @@ function showParty(party) {
   }
   $('party-dialog').showModal();
 }
-for (const id of ['uf', 'sphere', 'statement-type', 'turn']) $(id).addEventListener('change', render);
+for (const id of ['uf', 'sphere', 'statement-type', 'turn', 'minimum-kind', 'minimum-value']) $(id).addEventListener('change', render);
+$('minimum-value').addEventListener('keydown', (event) => { if (event.key === 'Enter') render(); });
+$('clear-minimum').addEventListener('click', () => { $('minimum-value').value = ''; render(); $('minimum-value').focus(); });
 $('open-methodology').addEventListener('click', () => $('methodology-dialog').showModal());
 $('close-methodology').addEventListener('click', () => $('methodology-dialog').close());
 $('close-party').addEventListener('click', () => $('party-dialog').close());

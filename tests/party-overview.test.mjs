@@ -99,3 +99,45 @@ test('totais por origem e fonte respeitam o recorte e não somam prestações an
   assert.deepEqual(empty.origins, []);
   assert.deepEqual(empty.sources, []);
 });
+
+test('valor mínimo considera o total do partido no recorte e recalcula a cobertura e as receitas', () => {
+  const store = new AccountStore('parties');
+  const second = { SQ_PRESTADOR_CONTAS: 'OUTRO-PARTIDO', SG_PARTIDO: 'SIGLA B', TP_PRESTACAO_CONTAS: 'Final', DT_PRESTACAO_CONTAS: '05/10/2026' };
+  ingest(store, 'receipts', [
+    receipt({ VR_RECEITA: '500,00', DT_PRESTACAO_CONTAS: '01/09/2026' }),
+    receipt({ VR_RECEITA: '40,00' }),
+    receipt({ SQ_PRESTADOR_CONTAS: 'DIRETORIO-RJ', SG_UF: 'RJ', VR_RECEITA: '30,00', DS_ORIGEM_RECEITA: 'Repasses' }),
+    receipt({ ...second, VR_RECEITA: '60,00' }),
+  ]);
+  ingest(store, 'contracted', [contracted(), contracted({ ...second, VR_DESPESA_CONTRATADA: '500,00' })]);
+  ingest(store, 'paid', [paid(), paid({ ...second, VR_PAGTO_DESPESA: '400,00' })]);
+  const data = createPartyOverview(store);
+  const filtered = aggregateParties(data, { minimumCents: 7000 });
+  assert.deepEqual(filtered.parties.map((party) => party.party), ['TESTE']);
+  assert.equal(filtered.accounts, 2);
+  assert.equal(filtered.totals.receipts.knownCents, 7000);
+  assert.equal(filtered.totals.contracted.knownCents, 25000);
+  assert.equal(filtered.totals.paid.knownCents, 10000);
+  assert.equal(filtered.origins.find((group) => group.name === 'Repasses').cents, 3000);
+  assert.equal(filtered.sources[0].cents, 7000);
+  assert.deepEqual(filtered.types, { Parcial: 2 });
+  assert.equal(filtered.firstDate, '12/09/2026');
+  assert.equal(filtered.lastDate, '12/09/2026');
+  assert.equal(aggregateParties(data, { uf: 'SP', minimumCents: 7000 }).parties.length, 0);
+  assert.deepEqual(aggregateParties(data, { minimumCents: 30000, minimumKind: 'contracted' }).parties.map((party) => party.party), ['SIGLA B']);
+  assert.equal(aggregateParties(data, { minimumCents: 30000, minimumKind: 'paid' }).totals.receipts.knownCents, 6000);
+});
+
+test('valor mínimo preserva somas parciais e não trata tabela ausente como zero', () => {
+  const store = new AccountStore('parties');
+  ingest(store, 'receipts', [receipt({ VR_RECEITA: '20,00' }), receipt({ VR_RECEITA: '#NULO#' }), receipt({ SQ_PRESTADOR_CONTAS: 'SEM-VALOR', SG_PARTIDO: 'SIGLA B', VR_RECEITA: '#NULO#' })]);
+  const data = createPartyOverview(store);
+  const partial = aggregateParties(data, { minimumCents: 2000 });
+  assert.equal(partial.parties.length, 1);
+  assert.equal(partial.totals.receipts.missing, 1);
+  assert.equal(partial.totals.receipts.knownCents, 2000);
+  assert.equal(aggregateParties(data, { minimumCents: 2001 }).accounts, 0);
+  assert.equal(aggregateParties(data, { minimumCents: 1, minimumKind: 'paid' }).accounts, 0);
+  assert.deepEqual(aggregateParties(data, { minimumCents: 0 }), aggregateParties(data));
+  for (const filters of [{ minimumCents: -1 }, { minimumCents: 1.5 }, { minimumCents: Number.MAX_SAFE_INTEGER + 1 }, { minimumKind: 'outra' }]) assert.throws(() => aggregateParties(data, filters), /mínimo inválido/);
+});

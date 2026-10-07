@@ -36,6 +36,18 @@ function collectGroups(target, groups) {
 // Valores brutos: repasses entre órgãos continuam na movimentação declarada.
 // Não inferimos receita líquida nem subtraímos transferências sem conciliação.
 export function aggregateParties(data, filters = {}) {
+  const minimum = filters.minimumCents ?? 0;
+  const minimumKind = filters.minimumKind || 'receipts';
+  if (!Number.isSafeInteger(minimum) || minimum < 0 || !Object.hasOwn(TABLES, minimumKind)) throw new Error('Filtro de valor mínimo inválido.');
+  if (minimum > 0) {
+    const { minimumCents, minimumKind: selectedKind, ...scope } = filters;
+    const overview = aggregateParties(data, scope);
+    const included = new Set(overview.parties.filter((party) => {
+      const value = chartValue(party, { kind: minimumKind });
+      return value.cents !== null && value.cents >= minimum;
+    }).map((party) => party.party));
+    return aggregateParties({ ...data, accounts: data.accounts.filter((account) => included.has(account.party)) }, scope);
+  }
   const parties = new Map();
   const totals = Object.fromEntries(Object.keys(TABLES).map((kind) => [kind, total(Boolean(data.tables[kind]))]));
   const origins = new Map(), sources = new Map();

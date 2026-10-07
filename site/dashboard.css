@@ -36,4 +36,10 @@
 .column-highlight{opacity:0}
 .party-column:hover .column-highlight,.party-column:focus-within .column-highlight{opacity:.12}
 .column-hit-area{cursor:pointer;pointer-events:all}
+.minimum-filter{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px 16px;align-items:end;margin:20px 0 8px;padding-top:16px;border-top:1px solid var(--line)}
+.minimum-filter>div{min-width:0}.minimum-filter label{margin:0 0 7px;font-size:.8125rem;color:var(--muted)}
+#minimum-value{width:100%;height:43px;border:1px solid #cddade;border-radius:7px;padding:8px 10px;color:var(--ink);background:white;font-size:.875rem}
+#minimum-value[aria-invalid=true]{border-color:#b6602d}
+.minimum-filter>p{grid-column:1/-1;font-size:.75rem;color:var(--muted)}.minimum-filter>.error{color:#744c15;margin-top:4px}
+@media(max-width:700px){.minimum-filter{grid-template-columns:1fr}.minimum-filter .secondary{justify-self:start}}
 @media(max-width:700px){.chart-legend{grid-template-columns:1fr}.legend-category[data-category=receipts]{grid-row:auto}.legend-category{padding:12px}.legend-subcategories{margin-left:4px;padding-left:12px}}
