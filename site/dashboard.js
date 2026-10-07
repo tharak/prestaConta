@@ -11,6 +11,7 @@ const money = (cents) => cents === null ? 'Sem lançamentos' : brl.format(cents 
 const timestamp = (value) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(value)) + ' (Brasília)';
 const colors = ['#167866', '#3c71b1', '#cd7b32', '#8952a5', '#c54870', '#608b38', '#af9830', '#447f92', '#8a6451', '#5d64a6', '#bc5e44', '#597463', '#707981'];
 let data, result, series = [];
+let compositionField = 'origins';
 const categoryColors = { origins: new Map(), sources: new Map() };
 const hiddenSeries = new Set();
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -82,23 +83,20 @@ function render() {
     $(`total-${kind}`).textContent = total.available ? money(total.count ? total.knownCents : null) + (total.missing ? ' *' : '') : 'Não disponível';
     $(`note-${kind}`).textContent = totalsNote(total);
   }
-  const view = $('chart-view').value;
+  const field = compositionField;
   const totals = Object.entries(TABLES).map(([kind, definition], i) => ({ key: kind, kind, label: definition.label === 'Receitas' ? 'Receita declarada' : definition.label, color: colors[i] }));
   series = [...totals];
-  if (view !== 'totals') {
-    const field = view === 'sources' ? 'sources' : 'origins';
-    series.push(...result.categories[field].map((name) => ({ key: `${field}:${name}`, field, name, label: name, color: categoryColors[field].get(name) })));
-  }
-  $('chart-title').textContent = view === 'totals' ? 'Receitas, contratado e pago, por partido' : view === 'sources' ? 'Totais e fontes dos recursos, por partido' : 'Totais e origens da verba, por partido';
-  $('chart-note').textContent = `Cada partido tem três colunas: receita declarada, despesas contratadas e despesas pagas.${view === 'totals' ? '' : ` As faixas horizontais dentro da receita mostram sua composição por ${view === 'sources' ? 'fonte' : 'origem'}.`} Toque ou passe o mouse para ver o valor exato; clique na sigla para abrir o partido.`;
+  series.push(...result.categories[field].map((name) => ({ key: `${field}:${name}`, field, name, label: name, color: categoryColors[field].get(name) })));
+  $('chart-title').textContent = field === 'sources' ? 'Totais e fontes dos recursos, por partido' : 'Totais e origens da verba, por partido';
+  $('chart-note').textContent = `Cada partido tem três colunas: receita declarada, despesas contratadas e despesas pagas. As faixas horizontais dentro da receita mostram sua composição por ${field === 'sources' ? 'fonte' : 'origem'}. Toque ou passe o mouse para ver o valor exato; clique na sigla para abrir o partido.`;
   renderResourceTotals(); renderLegend(); renderChart(); renderTable();
   $('bar-detail').textContent = 'Selecione uma coluna para consultar o valor declarado.';
 }
 function renderResourceTotals() {
-  const field = $('chart-view').value === 'sources' ? 'sources' : 'origins';
+  const field = compositionField;
   $('resource-title').textContent = field === 'sources' ? 'Composição por fonte dos recursos' : 'Composição por origem da verba';
   const container = $('resource-totals'); container.replaceChildren();
-  container.hidden = $('chart-view').value === 'totals';
+  container.hidden = hiddenSeries.has('receipts');
   $('resource-title').hidden = container.hidden;
   const groups = result[field];
   if (!groups.length) { container.append(node('p', result.totals.receipts.available ? 'Sem lançamentos de receita neste recorte.' : 'Tabela de receitas não disponível na fonte.', 'empty-value')); return; }
@@ -119,12 +117,47 @@ function canStack(groups, cents) {
 }
 function renderLegend() {
   $('legend').replaceChildren();
-  for (const item of series) {
+  function control(item, parent = false) {
     const button = node('button', undefined, 'legend-item'); button.type = 'button'; button.setAttribute('aria-pressed', String(!hiddenSeries.has(item.key)));
+    button.dataset.seriesKey = item.key;
+    if (parent) button.classList.add('legend-parent');
+    else if (hiddenSeries.has('receipts')) { button.disabled = true; button.setAttribute('aria-pressed', 'false'); }
     const dot = node('span', undefined, 'legend-dot'); dot.style.backgroundColor = item.color; dot.setAttribute('aria-hidden', 'true');
-    button.append(dot, document.createTextNode(item.label));
-    button.addEventListener('click', () => { if (hiddenSeries.has(item.key)) hiddenSeries.delete(item.key); else hiddenSeries.add(item.key); renderResourceTotals(); renderLegend(); renderChart(); renderTable(); });
-    $('legend').append(button);
+    const check = node('span', !hiddenSeries.has(item.key) && !button.disabled ? '✓' : '', 'legend-check'); check.setAttribute('aria-hidden', 'true');
+    button.append(check, dot, document.createTextNode(item.label));
+    button.addEventListener('click', () => {
+      if (hiddenSeries.has(item.key)) hiddenSeries.delete(item.key); else hiddenSeries.add(item.key);
+      renderResourceTotals(); renderLegend(); renderChart(); renderTable();
+      $('bar-detail').textContent = 'Selecione uma coluna ou faixa para consultar o valor declarado.';
+      [...$('legend').querySelectorAll('button')].find((control) => control.dataset.seriesKey === item.key)?.focus({ preventScroll: true });
+    });
+    return button;
+  }
+  for (const item of series.filter((item) => item.kind)) {
+    const group = node('div', undefined, 'legend-category'); group.setAttribute('role', 'group'); group.setAttribute('aria-label', item.label);
+    group.style.setProperty('--category-color', item.color);
+    group.dataset.category = item.kind;
+    const parent = control(item, true); group.append(parent);
+    if (item.kind === 'receipts') {
+      const choice = node('fieldset', undefined, 'legend-composition'); choice.append(node('legend', 'Composição das receitas', 'sr-only'));
+      for (const [field, label] of [['origins', 'Origens da verba'], ['sources', 'Fontes dos recursos']]) {
+        const option = node('label'); const input = node('input'); input.type = 'radio'; input.name = 'receipt-composition'; input.value = field;
+        input.checked = compositionField === field; input.disabled = hiddenSeries.has('receipts');
+        input.addEventListener('change', () => { compositionField = field; render(); [...$('legend').querySelectorAll('input')].find((control) => control.value === field)?.focus({ preventScroll: true }); });
+        option.append(input, document.createTextNode(label)); choice.append(option);
+      }
+      group.append(choice);
+      const children = series.filter((item) => !item.kind);
+      if (children.length) {
+        const nested = node('div', undefined, 'legend-subcategories'); nested.id = 'receipt-subcategories';
+        parent.setAttribute('aria-controls', nested.id);
+        nested.append(node('p', compositionField === 'sources' ? 'Fontes dos recursos' : 'Origens da verba', 'legend-subtitle'));
+        const options = node('div', undefined, 'legend-subcategory-options');
+        for (const child of children) options.append(control(child));
+        nested.append(options); group.append(nested);
+      }
+    }
+    $('legend').append(group);
   }
 }
 function showValue(party, item) {
@@ -136,9 +169,8 @@ function renderChart() {
   const container = $('party-chart'); container.replaceChildren();
   const visible = series.filter((item) => item.kind && !hiddenSeries.has(item.key));
   $('chart-scroll-hint').hidden = true;
-  if (!result.parties.length || !visible.length) { container.append(node('p', !result.parties.length ? 'Nenhuma conta de órgão neste recorte. Experimente outro estado, esfera ou tipo de prestação.' : 'Ative uma série na legenda para exibir as colunas.', 'chart-placeholder')); return; }
-  const field = $('chart-view').value === 'sources' ? 'sources' : 'origins';
-  const showComposition = $('chart-view').value !== 'totals';
+  if (!result.parties.length || !visible.length) { container.append(node('p', !result.parties.length ? 'Nenhuma conta de órgão neste recorte. Experimente outro estado, esfera ou tipo de prestação.' : 'Ative uma categoria nos filtros do gráfico para exibir as colunas.', 'chart-placeholder')); return; }
+  const field = compositionField;
   const width = Math.max(620, result.parties.length * 70 + 106, container.clientWidth);
   $('chart-scroll-hint').hidden = width <= container.clientWidth;
   const height = 480, left = 88, right = 18, top = 28, bottom = 76;
@@ -152,12 +184,11 @@ function renderChart() {
   const svg = svgNode('svg', { width, height, viewBox: `0 0 ${width} ${height}`, role: 'group', 'aria-label': 'Três totais por partido, em reais. A coluna de receitas contém faixas horizontais por origem ou fonte.' });
   const defs = svgNode('defs'); const pattern = svgNode('pattern', { id: 'partial-hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse' });
   pattern.append(svgNode('path', { d: 'M-1,1 l2,-2 M0,6 l6,-6 M5,7 l2,-2', stroke: '#fff', 'stroke-width': 1.4 })); defs.append(pattern); svg.append(defs);
-  svg.append(svgNode('text', { x: left, y: 14, class: 'chart-axis' }, 'Valores em R$'));
   const ticks = [];
   for (let tick = min; tick < max - step / 4; tick += step) ticks.push(tick);
   ticks.push(max);
   for (const tick of ticks) {
-    svg.append(svgNode('line', { x1: left, x2: width - right, y1: y(tick), y2: y(tick), class: 'chart-grid' }), svgNode('text', { x: left - 10, y: y(tick) + 4, 'text-anchor': 'end', class: 'chart-axis' }, compact.format(tick / 100)));
+    svg.append(svgNode('line', { x1: left, x2: width - right, y1: y(tick), y2: y(tick), class: 'chart-grid' }), svgNode('text', { x: left - 10, y: y(tick) + 4, 'text-anchor': 'end', class: 'chart-axis' }, `R$ ${compact.format(tick / 100)}`));
   }
   const plotWidth = width - left - right, slot = plotWidth / result.parties.length;
   const barWidth = Math.min(22, (slot - 18) / visible.length);
@@ -169,6 +200,11 @@ function renderChart() {
       const item = visible[i], value = chartValue(party, item);
       const barX = start + i * barWidth;
       const label = `${party.party}, ${item.label}: ${exact(value)}`;
+      const column = svgNode('g', { class: 'party-column', 'data-series': item.kind, 'data-party': party.party });
+      column.append(svgNode('rect', { x: barX, y: top, width: barWidth, height: height - top - bottom, fill: item.color, class: 'column-highlight', 'aria-hidden': 'true', 'pointer-events': 'none' }));
+      const hitArea = svgNode('rect', { x: barX, y: top, width: barWidth, height: height - top - bottom, fill: 'transparent', class: 'column-hit-area', 'aria-hidden': 'true' });
+      hitArea.addEventListener('click', () => showValue(party, item)); column.append(hitArea);
+      column.addEventListener('pointerenter', () => showValue(party, item));
       let bar, overlay;
       if (value.cents === null) {
         bar = svgNode('text', { x: barX + barWidth / 2, y: y(0) - 3, 'text-anchor': 'middle', class: 'chart-axis party-bar', tabindex: 0, role: 'button', 'aria-label': label }, '—');
@@ -181,9 +217,9 @@ function renderChart() {
       bar.append(svgNode('title', {}, label));
       bar.addEventListener('pointerenter', () => showValue(party, item)); bar.addEventListener('focus', () => showValue(party, item));
       bar.addEventListener('click', () => showValue(party, item)); bar.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showValue(party, item); } });
-      svg.append(bar);
-      if (overlay) svg.append(overlay);
-      if (showComposition && item.kind === 'receipts' && canStack(party[field], value.cents)) {
+      column.append(bar);
+      if (overlay) column.append(overlay);
+      if (item.kind === 'receipts' && canStack(party[field], value.cents)) {
         let accumulated = 0;
         for (const group of party[field]) {
           if (group.cents === 0) continue;
@@ -196,10 +232,11 @@ function renderChart() {
           segment.append(svgNode('title', {}, attributes['aria-label']));
           segment.addEventListener('pointerenter', () => showValue(party, category)); segment.addEventListener('focus', () => showValue(party, category));
           segment.addEventListener('click', () => showValue(party, category)); segment.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showValue(party, category); } });
-          svg.append(segment);
-          if (group.missing) svg.append(svgNode('rect', { ...attributes, fill: 'url(#partial-hatch)', class: '', tabindex: -1, 'aria-hidden': 'true', 'pointer-events': 'none' }));
+          column.append(segment);
+          if (group.missing) column.append(svgNode('rect', { ...attributes, fill: 'url(#partial-hatch)', class: '', tabindex: -1, 'aria-hidden': 'true', 'pointer-events': 'none' }));
         }
       }
+      svg.append(column);
     }
     const labelX = left + index * slot + slot / 2, labelY = height - bottom + 24;
     const label = svgNode('text', { x: labelX, y: labelY, 'text-anchor': 'middle', class: 'party-label', role: 'button', tabindex: 0, 'aria-label': `Ver totais de ${party.party}` }, party.party);
@@ -208,7 +245,7 @@ function renderChart() {
   container.append(svg);
 }
 function renderTable() {
-  const visible = series.filter((item) => !hiddenSeries.has(item.key));
+  const visible = series.filter((item) => !hiddenSeries.has(item.key) && (item.kind || !hiddenSeries.has('receipts')));
   const head = node('tr'); const partyHead = node('th', 'Partido'); partyHead.scope = 'col'; head.append(partyHead);
   for (const item of visible) { const th = node('th', item.label, 'numeric'); th.scope = 'col'; head.append(th); }
   $('values-head').replaceChildren(head); $('values-body').replaceChildren();
@@ -225,7 +262,7 @@ function showParty(party) {
   for (const [kind, definition] of Object.entries(TABLES)) {
     const block = node('div'); block.append(node('span', definition.label), node('strong', exact(chartValue(party, { kind }))), node('span', totalsNote(party.totals[kind])));
     if (kind === 'receipts') {
-      const field = $('chart-view').value === 'sources' ? 'sources' : 'origins';
+      const field = compositionField;
       const breakdown = node('div', undefined, 'receipt-breakdown'); breakdown.append(node('h3', field === 'sources' ? 'Fontes dos recursos' : 'Origens da verba'));
       const maximum = Math.max(1, Math.abs(party.totals.receipts.knownCents), ...party[field].map((group) => Math.abs(group.cents)));
       for (const group of party[field]) {
@@ -240,7 +277,7 @@ function showParty(party) {
   }
   $('party-dialog').showModal();
 }
-for (const id of ['uf', 'sphere', 'statement-type', 'turn', 'chart-view']) $(id).addEventListener('change', render);
+for (const id of ['uf', 'sphere', 'statement-type', 'turn']) $(id).addEventListener('change', render);
 $('open-methodology').addEventListener('click', () => $('methodology-dialog').showModal());
 $('close-methodology').addEventListener('click', () => $('methodology-dialog').close());
 $('close-party').addEventListener('click', () => $('party-dialog').close());
