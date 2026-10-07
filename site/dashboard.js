@@ -12,12 +12,10 @@ const shareLabel = (share) => share > 0 && share < .0001 ? '< 0,01%' : percent.f
 const number = (value) => value.toLocaleString('pt-BR');
 const money = (cents) => cents === null ? 'Sem lançamentos' : brl.format(cents / 100);
 const timestamp = (value) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(value)) + ' (Brasília)';
-const colors = ['#167866', '#3c71b1', '#cd7b32', '#8952a5', '#c54870', '#608b38', '#af9830', '#447f92', '#8a6451', '#5d64a6', '#bc5e44', '#597463', '#707981'];
 let data, result, accountIndexPromise;
 const series = Object.entries(TABLES).map(([kind, definition]) => ({ kind, label: kind === 'receipts' ? 'Receitas declaradas' : definition.label }));
 const chartStates = new Map();
 const partyColors = new Map();
-const categoryColors = { origins: new Map(), sources: new Map() };
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
 function svgNode(tag, attributes = {}, text) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -29,13 +27,6 @@ function exact(value) {
   if (value.cents === null) return value.missing ? 'Não disponível: valores incompletos' : 'Sem lançamentos';
   return money(value.cents) + (value.missing ? ` · parcial (${number(value.missing)} registro(s) sem valor)` : '');
 }
-function totalsNote(total) {
-  if (!total.available) return 'Tabela não disponível na fonte';
-  if (!total.count) return 'Nenhum lançamento neste recorte';
-  return `${number(total.count)} lançamentos · ${number(total.accountsWithRecords)} órgãos com registros` +
-    (total.missing ? ` · soma parcial: ${number(total.missing)} registro(s) sem valor` : '') +
-    (total.accountsWithoutRecords ? ` · ${number(total.accountsWithoutRecords)} órgãos sem lançamentos nesta tabela` : '');
-}
 async function load() {
   $('reload').disabled = true; $('load-error').hidden = true;
   $('publication-date').textContent = 'Consultando a publicação atual…';
@@ -46,54 +37,21 @@ async function load() {
     const next = await json(new URL('parties/overview.json.gz', root));
     if (next.version !== 1 || next.scope !== 'parties' || next.year !== config.year || !Array.isArray(next.accounts) || next.updatedAt !== manifest.scopes.parties.updatedAt) throw new Error('A publicação mudou durante a leitura. Recarregue para consultar uma versão completa.');
     data = next;
-    for (const field of ['origins', 'sources']) {
-      const names = [...new Set(data.accounts.flatMap((account) => account.statements.flatMap((statement) => statement[field].map((group) => group.name))))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-      categoryColors[field] = new Map(names.map((name, i) => [name, colors[(i + 3) % colors.length]]));
-    }
     accountIndexPromise = undefined;
     chartStates.clear();
     $('publication-date').textContent = `Dados obtidos do TSE em ${timestamp(data.updatedAt)}`;
-    $('file-dates').replaceChildren();
-    for (const [kind, table] of Object.entries(data.tables)) $('file-dates').append(node('p', `${TABLES[kind].label}: ${table.filename} · geração: ${table.generations.join(' / ') || 'Não informada'}`));
     render();
   } catch (error) {
-    $('load-error').replaceChildren(node('p', `${error.message} Use “Como ler os dados” para tentar recarregar.`)); $('load-error').hidden = false;
+    $('load-error').replaceChildren(node('p', `${error.message} Use “Atualizar” para tentar novamente.`)); $('load-error').hidden = false;
     $('publication-date').textContent = data ? `A atualização falhou. Continua visível a publicação de ${timestamp(data.updatedAt)}.` : 'Não foi possível carregar os dados.';
-    if (!data) { $('coverage').textContent = 'Nenhum total eleitoral foi carregado.'; $('party-chart').replaceChildren(node('p', 'Gráfico indisponível até o carregamento da fonte.', 'chart-placeholder')); $('resource-totals').replaceChildren(node('p', 'Totais por origem indisponíveis até o carregamento da fonte.', 'empty-value')); }
+    if (!data) $('party-chart').replaceChildren(node('p', 'Gráficos indisponíveis até o carregamento da fonte.', 'chart-placeholder'));
   } finally { $('reload').disabled = false; }
 }
 function render() {
   if (!data) return;
   result = aggregateParties(data);
   result.parties.forEach((party, index) => partyColors.set(party.party, `hsl(${(index * 137.508 + 164) % 360} 48% ${index % 2 ? 43 : 36}%)`));
-  const types = Object.entries(result.types).map(([type, count]) => `${type}: ${number(count)}`).join(' · ');
-  const dates = result.firstDate ? `Prestações de ${result.firstDate} a ${result.lastDate}.` : 'Datas de prestação não disponíveis.';
-  $('coverage').textContent = `${number(result.parties.length)} partidos · ${number(result.accounts)} contas de órgãos. ${dates} ${types}` + (result.undated ? ` · ${number(result.undated)} sem data informada.` : '');
-  for (const [kind, total] of Object.entries(result.totals)) {
-    $(`total-${kind}`).textContent = total.available ? money(total.count ? total.knownCents : null) + (total.missing ? ' *' : '') : 'Não disponível';
-    $(`note-${kind}`).textContent = totalsNote(total);
-  }
-  renderResourceTotals(); renderCharts(); renderTable();
-}
-function renderResourceTotals() {
-  const field = 'origins';
-  const container = $('resource-totals'); container.replaceChildren();
-  const groups = result[field];
-  if (!groups.length) { container.append(node('p', result.totals.receipts.available ? 'Sem lançamentos de receita neste recorte.' : 'Tabela de receitas não disponível na fonte.', 'empty-value')); return; }
-  const total = result.totals.receipts;
-  if (!canStack(groups, total.knownCents)) { container.append(node('p', 'A composição contém valores negativos ou incompletos. Explore as contas para consultar cada origem.', 'empty-value')); return; }
-  for (const group of groups.filter((group) => group.cents > 0)) {
-    const segment = node('button', undefined, 'resource-segment'); segment.type = 'button';
-    segment.style.width = `${group.cents / total.knownCents * 100}%`;
-    segment.style.backgroundColor = categoryColors[field].get(group.name);
-    const label = `${group.name}: ${exact(group)}`; segment.title = label; segment.setAttribute('aria-label', label);
-    const show = () => { $('chart-detail').textContent = `Todos os partidos · ${label}`; };
-    segment.addEventListener('pointerenter', show); segment.addEventListener('focus', show); segment.addEventListener('click', show);
-    container.append(segment);
-  }
-}
-function canStack(groups, cents) {
-  return cents > 0 && groups.every((group) => group.cents >= 0) && groups.reduce((sum, group) => sum + group.cents, 0) === cents;
+  renderCharts();
 }
 function colorAt(index) { return `hsl(${(index * 137.508 + 164) % 360} 48% ${index % 2 ? 43 : 36}%)`; }
 function decorate(nodes, level) { return nodes.map((entry, index) => ({ ...entry, level, color: colorAt(index) })); }
@@ -165,7 +123,7 @@ function renderCharts() {
 function renderPie(card, item, state, focus = false) {
   card.replaceChildren(); card.setAttribute('aria-busy', String(state.loading));
   const frame = state.frames.at(-1), layout = layoutPie(frame.nodes);
-  const title = node('h4', item.label); card.append(title);
+  const title = node('h2', item.label); card.append(title);
   const trail = node('nav', undefined, 'pie-trail'); trail.setAttribute('aria-label', `Caminho de ${item.label}`);
   state.frames.forEach((ancestor, index) => {
     if (index) trail.append(node('span', '›', 'trail-separator'));
@@ -209,7 +167,7 @@ function renderPie(card, item, state, focus = false) {
   };
   state.show = show; state.advance = advance;
   if (layout.status === 'ready') stage.append(drawPie(layout, frame, item, { show, advance }));
-  else stage.append(node('p', !data.tables[item.kind] ? 'Tabela não disponível na fonte.' : layout.status === 'negative' ? 'Há totais negativos neste nível. Consulte os valores na tabela ou selecione um item da legenda.' : 'Nenhum valor positivo disponível para desenhar esta pizza.', 'pie-empty'));
+  else stage.append(node('p', !data.tables[item.kind] ? 'Tabela não disponível na fonte.' : layout.status === 'negative' ? 'Há totais negativos neste nível. Selecione um item da legenda para consultar o valor.' : 'Nenhum valor positivo disponível para desenhar esta pizza.', 'pie-empty'));
   card.append(stage, detail, error);
   const excluded = frame.nodes.filter((entry) => entry.cents === null || entry.cents === 0).length;
   const missing = frame.nodes.reduce((sum, entry) => sum + entry.missing, 0);
@@ -248,19 +206,5 @@ function drawPie(layout, frame, item, actions) {
   }
   return svg;
 }
-function renderTable() {
-  const visible = series;
-  const head = node('tr'); const partyHead = node('th', 'Partido'); partyHead.scope = 'col'; head.append(partyHead);
-  for (const item of visible) { const th = node('th', item.label, 'numeric'); th.scope = 'col'; head.append(th); }
-  $('values-head').replaceChildren(head); $('values-body').replaceChildren();
-  for (const party of result.parties) {
-    const row = node('tr'); const name = node('th', party.party); name.scope = 'row'; row.append(name);
-    for (const item of visible) row.append(node('td', exact(chartValue(party, item)), 'numeric'));
-    $('values-body').append(row);
-  }
-}
-$('open-methodology').addEventListener('click', () => $('methodology-dialog').showModal());
-$('close-methodology').addEventListener('click', () => $('methodology-dialog').close());
-$('reload').addEventListener('click', () => { $('methodology-dialog').close(); load(); });
-for (const id of ['methodology-dialog']) $(id).addEventListener('click', (event) => { const rect = $(id).getBoundingClientRect(); if (event.target === $(id) && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) $(id).close(); });
+$('reload').addEventListener('click', load);
 load();
