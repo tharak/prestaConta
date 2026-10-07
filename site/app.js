@@ -90,6 +90,7 @@ function load(file) {
       state.loaded = data;
       state.scope = data.scope;
       state.account = null;
+      $('account-list').replaceChildren(element('p', 'Carregando lista de contas…', 'empty-list'));
       state.summary = null;
       state.page = 0;
       state.detailVersion++;
