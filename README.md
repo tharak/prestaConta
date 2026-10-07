@@ -91,3 +91,5 @@ Em **Settings → Pages → Build and deployment**, selecione **GitHub Actions**
 `site/` contém a página, estilos, interface, parser, leitor ZIP e leitor de contas publicadas. `relay/` contém o encaminhamento opcional. `tests/` usa apenas registros sintéticos criados durante os testes, sem dados eleitorais reais. `scripts/build.mjs` prepara a página e `scripts/refresh-data.mjs` consulta e processa os arquivos oficiais.
 
 Os testes de parser, integridade dos ZIP, associação de pagamentos, prestações separadas, atualização de publicação e relay são independentes da disponibilidade do TSE. Valide uma execução completa e o comportamento da página publicada antes de compartilhar o site.
+
+Validação local realizada com os arquivos oficiais obtidos em 7 de outubro de 2026: processamento das duas bases, 28 testes automatizados e navegação de candidaturas e órgãos partidários no navegador, incluindo exportação CSV, tela móvel e texto ampliado em 200%. O navegador de verificação não ofereceu WebMCP; a validação dessa integração opcional ficou indisponível, sem afetar a interface.
