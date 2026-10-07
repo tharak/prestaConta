@@ -1,3 +1,5 @@
+import { buildBenchmarks, cohortKey, counterpartyGroups, sortedTransactions } from './analytics.js';
+
 export const TABLES = Object.freeze({
   receipts: { label: 'Receitas', prefix: 'receitas', amounts: ['VR_RECEITA'], dates: ['DT_RECEITA'] },
   contracted: { label: 'Despesas contratadas', prefix: 'despesas_contratadas', amounts: ['VR_DESPESA_CONTRATADA'], dates: ['DT_DESPESA', 'DT_CONTRATACAO'] },
@@ -102,6 +104,7 @@ export class AccountStore {
     this.source = '';
   }
   reader(kind, filename) {
+    delete this.benchmarks;
     const definition = TABLES[kind];
     if (!definition) throw new Error('Tabela não reconhecida.');
     if (this.tables[kind]) throw new Error(`Tabela repetida: ${definition.label}.`);
@@ -214,13 +217,28 @@ export class AccountStore {
     }
     return { account: this.accountInfo(account), statement: { id: statement.id, type: statement.type, date: statement.date, turn: statement.turn },
       totals, sources: groupRows(statement.receipts, 'source'), origins: groupRows(statement.receipts, 'origin'),
-      natures: groupRows(statement.receipts, 'nature'), tables: this.metadata(), loadedAt: this.loadedAt, source: this.source };
+      natures: groupRows(statement.receipts, 'nature'), contractedCategories: groupRows(statement.contracted, 'origin'),
+      paidCategories: groupRows(statement.paid, 'origin'), tables: this.metadata(), loadedAt: this.loadedAt, source: this.source };
   }
-  transactions(id, statementId, kind, page = 0, size = 20) {
+  benchmark(id, statementId) {
+    const account = this.accounts.get(id);
+    const statement = account?.statements.get(statementId);
+    if (!statement) throw new Error('Prestação de contas não encontrada.');
+    const key = cohortKey(account, statement);
+    const latest = this.statements(account).find((s) => cohortKey(account, s) === key && /^\d{2}\/\d{2}\/\d{4}$/.test(s.date));
+    if (this.scope !== 'candidates' || !key || latest?.id !== statementId) return null;
+    this.benchmarks ??= buildBenchmarks(this);
+    return this.benchmarks[key] || null;
+  }
+  counterparties(id, statementId, filters = {}, page = 0) {
+    const statement = this.accounts.get(id)?.statements.get(statementId);
+    if (!statement) throw new Error('Prestação de contas não encontrada.');
+    return counterpartyGroups(statement.receipts, filters, page);
+  }
+  transactions(id, statementId, kind, page = 0, size = 20, order = 'original') {
     const statement = this.accounts.get(id)?.statements.get(statementId);
     if (!statement || !TABLES[kind]) throw new Error('Lançamentos não encontrados.');
-    const records = statement[kind];
-    // Preserva a ordem original do CSV: não classifica contas por valores ou pontuações.
+    const records = sortedTransactions(statement[kind], order);
     return { rows: records.slice(page * size, (page + 1) * size), count: records.length, filename: this.tables[kind]?.filename || '' };
   }
   metadata() {

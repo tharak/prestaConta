@@ -1,4 +1,5 @@
 import { AccountStore } from './data.js';
+import { cohortKey, counterpartyGroups, sortedTransactions } from './analytics.js';
 
 async function json(url, signal) {
   let response;
@@ -22,6 +23,7 @@ export class PublishedStore extends AccountStore {
     this.loadedAt = new Date().toISOString();
     this.cache = new Map();
     this.files = new Map();
+    this.benchmarkFile = index.benchmarks === 'benchmarks.json.gz' ? index.benchmarks : null;
     for (const account of index.accounts) {
       if (!/^[A-Za-z0-9_-]+\.json\.gz$/.test(account.filename)) throw new Error('Nome de arquivo inválido na publicação.');
       this.files.set(account.id, account.filename);
@@ -43,12 +45,33 @@ export class PublishedStore extends AccountStore {
     if (!statement) throw new Error('Prestação não encontrada na publicação.');
     return { ...statement.summary, loadedAt: this.loadedAt, publishedAt: this.publishedAt, sourceMode: 'published' };
   }
-  async transactions(id, statementId, kind, page = 0, size = 20) {
+  async transactions(id, statementId, kind, page = 0, size = 20, order = 'original') {
     const account = await this.accountData(id);
     const statement = account.statements.find((s) => s.summary.statement.id === statementId);
     if (!statement || !Object.hasOwn(statement.records, kind)) throw new Error('Lançamentos não encontrados.');
-    const records = statement.records[kind];
+    const records = sortedTransactions(statement.records[kind], order);
     return { rows: records.slice(page * size, (page + 1) * size), count: records.length, filename: this.tables[kind]?.filename || '' };
+  }
+  async benchmark(id, statementId) {
+    if (!this.benchmarkFile || this.scope !== 'candidates') return null;
+    const account = this.accounts.get(id);
+    const statement = account?.statements.get(statementId);
+    if (!statement) throw new Error('Prestação não encontrada.');
+    const key = cohortKey(account, statement);
+    const latest = this.statements(account).find((s) => cohortKey(account, s) === key && /^\d{2}\/\d{2}\/\d{4}$/.test(s.date));
+    if (!key || latest?.id !== statementId) return null;
+    if (!this.benchmarkData) {
+      const value = await json(new URL(this.benchmarkFile, this.root));
+      if (value.version !== 1 || value.year !== this.year || value.updatedAt !== this.publishedAt) throw new Error('As médias foram atualizadas durante a consulta. Recarregue a base.');
+      this.benchmarkData = value;
+    }
+    return this.benchmarkData.cohorts[key] || null;
+  }
+  async counterparties(id, statementId, filters = {}, page = 0) {
+    const account = await this.accountData(id);
+    const statement = account.statements.find((s) => s.summary.statement.id === statementId);
+    if (!statement) throw new Error('Prestação não encontrada.');
+    return counterpartyGroups(statement.records.receipts, filters, page);
   }
 }
 export async function loadPublished(scope, year, signal) {

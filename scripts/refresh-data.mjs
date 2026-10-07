@@ -4,11 +4,17 @@ import { gzipSync } from 'node:zlib';
 import { config } from '../site/config.js';
 import { AccountStore, parseCsvStream, selectTables } from '../site/data.js';
 import { ZipSource } from '../site/zip.js';
+import { buildBenchmarks } from '../site/analytics.js';
 
 export async function publishStore(store, destination) {
   await mkdir(destination, { recursive: true });
   const accounts = store.list();
   const index = { version: 1, year: store.year, scope: store.scope, updatedAt: store.loadedAt, source: store.source, tables: store.metadata(), options: store.options(), accounts: [] };
+  if (store.scope === 'candidates') {
+    index.benchmarks = 'benchmarks.json.gz';
+    await writeFile(join(destination, index.benchmarks), gzipSync(JSON.stringify({ version: 1, year: store.year,
+      updatedAt: store.loadedAt, cohorts: buildBenchmarks(store) })));
+  }
   for (const info of accounts) {
     const filename = `${Buffer.from(info.id).toString('base64url')}.json.gz`;
     index.accounts.push({ ...info, filename });

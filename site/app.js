@@ -1,12 +1,16 @@
-import { TABLES, csvCell } from './data.js';
+import { TABLES } from './data.js';
+import { CATEGORIES } from './analytics.js';
 
 const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const amount = (cents) => cents === null ? 'Não disponível' : brl.format(cents / 100);
 const timestamp = (iso) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(new Date(iso)) + ' (Brasília)';
-const state = { dataWorker: null, loadWorker: null, scope: '', loaded: null, page: 0, account: null, statementId: '', summary: null, kind: 'receipts', transactionPage: 0, totalTransactions: 0, listVersion: 0, detailVersion: 0, transactionVersion: 0 };
+const state = { dataWorker: null, loadWorker: null, scope: '', loaded: null, page: 0, account: null, statementId: '', summary: null, kind: 'receipts', transactionPage: 0, totalTransactions: 0, listVersion: 0, detailVersion: 0, transactionVersion: 0, contributorVersion: 0, contributorPage: 0, totalContributors: 0 };
 let requestId = 0;
 const pending = new Map();
+const bases = new Map();
+const baseRequests = new Map();
+let loadVersion = 0;
 
 function element(tag, text, className) {
   const el = document.createElement(tag);
@@ -59,66 +63,94 @@ function showError(message) {
   box.hidden = false;
 }
 function finishLoading(error) {
-  state.loadWorker?.terminate();
+  loadVersion++;
   state.loadWorker = null;
   setBusy(false);
   if (error) {
     showError(error);
-    setStatus(state.loaded ? `A atualização falhou. Continua visível a base carregada em ${timestamp(state.loaded.loadedAt)}.` : 'A base não foi carregada. Nenhum valor eleitoral está sendo exibido.');
+    setStatus(state.loaded ? 'A atualização falhou. A base anterior continua disponível.' : 'Não foi possível carregar a base. Tente novamente.');
   }
 }
-function load(file) {
+async function activateBase(worker, data) {
+  for (const [id, request] of pending) { request.reject(new Error('A base foi atualizada.')); pending.delete(id); }
+
+  const previousWorker = state.dataWorker;
+  if (previousWorker && previousWorker !== worker && ![...bases.values()].some((entry) => entry.worker === previousWorker)) previousWorker.terminate();
+  state.dataWorker = worker;
+  state.loadWorker = null;
+  state.loaded = data;
+  state.scope = data.scope;
+  state.account = null;
+  $('account-list').replaceChildren(element('p', 'Carregando lista de contas…', 'empty-list'));
+  state.summary = null;
+  state.page = 0;
+  state.detailVersion++;
+  state.transactionVersion++;
+  state.contributorVersion++;
+  setBusy(false);
+  $('account-detail').hidden = true;
+  $('welcome').hidden = false;
+  const icon = element('span', '↻'); icon.setAttribute('aria-hidden', 'true');
+  $('load').replaceChildren(icon, document.createTextNode(data.publishedAt ? ' Recarregar publicação' : ' Atualizar dados do TSE'));
+  const local = data.source.startsWith('Arquivo local:');
+  const rows = Object.values(data.tables).reduce((n, table) => n + table.rows, 0);
+  const updated = data.publishedAt ? `Dados obtidos do TSE em ${timestamp(data.publishedAt)}. Publicação consultada` : local ? 'Arquivo local processado' : 'Fonte consultada';
+  setStatus(`${updated} em ${timestamp(data.loadedAt)}. ${data.accounts.toLocaleString('pt-BR')} contas e ${rows.toLocaleString('pt-BR')} lançamentos disponíveis.`, 'loaded');
+  $('search').disabled = false;
+  $('search').value = '';
+  $('search').placeholder = data.scope === 'candidates' ? 'Buscar candidatura…' : 'Buscar órgão partidário…';
+  for (const field of ['uf', 'party', 'office']) {
+    const label = field === 'office' ? (data.scope === 'candidates' ? 'Todos os cargos' : 'Todas as esferas') : 'Todos';
+    const select = $(field);
+    select.replaceChildren(new Option(label, ''));
+    data.options[field].forEach((value) => select.add(new Option(value, value)));
+    select.disabled = false;
+  }
+  $('office-label').textContent = data.scope === 'candidates' ? 'Cargo' : 'Esfera';
+  await renderList();
+}
+function requestBase(scope, file, refresh = false) {
+  if (!file && !refresh && bases.has(scope)) return Promise.resolve(bases.get(scope));
+  if (!file && baseRequests.has(scope)) return baseRequests.get(scope);
+  const worker = createWorker();
+  const promise = new Promise((resolve, reject) => {
+    worker.addEventListener('message', ({ data }) => {
+      if (data.type === 'progress' && state.loadWorker === worker) setStatus(data.text, 'busy');
+      if (data.type === 'error') { worker.terminate(); reject(new Error(data.message)); }
+      if (data.type === 'loaded') {
+        const entry = { worker, data };
+        if (!file) {
+          const previous = bases.get(scope);
+          if (previous && previous.worker !== state.dataWorker) previous.worker.terminate();
+          bases.set(scope, entry);
+        }
+        resolve(entry);
+      }
+    });
+    worker.addEventListener('error', () => { worker.terminate(); reject(new Error('O processamento da base foi interrompido. Tente carregar novamente.')); });
+  });
+  if (!file) baseRequests.set(scope, promise);
+  promise.finally(() => { if (baseRequests.get(scope) === promise) baseRequests.delete(scope); }).catch(() => {});
+  if (selectedScope() === scope) state.loadWorker = worker;
+  worker.postMessage({ type: 'load', scope, file });
+  return promise;
+}
+async function load(file, refresh = false) {
   if (!('Worker' in window) || !('DecompressionStream' in window)) {
     showError('Este navegador não suporta a leitura dos arquivos do TSE. Use uma versão atual de Chrome, Firefox, Edge ou Safari.');
     return;
   }
-  finishLoading();
+  const version = ++loadVersion;
   $('load-error').hidden = true;
   setBusy(true);
-  setStatus('Iniciando leitura da fonte…', 'busy');
-  const worker = createWorker();
-  state.loadWorker = worker;
-  worker.addEventListener('message', async ({ data }) => {
-    if (worker !== state.loadWorker) return;
-    if (data.type === 'progress') setStatus(data.text, 'busy');
-    if (data.type === 'error') finishLoading(data.message);
-    if (data.type === 'loaded') {
-      for (const [id, request] of pending) { request.reject(new Error('A base foi atualizada.')); pending.delete(id); }
-      state.dataWorker?.terminate();
-      state.dataWorker = worker;
-      state.loadWorker = null;
-      state.loaded = data;
-      state.scope = data.scope;
-      state.account = null;
-      $('account-list').replaceChildren(element('p', 'Carregando lista de contas…', 'empty-list'));
-      state.summary = null;
-      state.page = 0;
-      state.detailVersion++;
-      state.transactionVersion++;
-      setBusy(false);
-      $('account-detail').hidden = true;
-      $('welcome').hidden = false;
-      const icon = element('span', '↻'); icon.setAttribute('aria-hidden', 'true');
-      $('load').replaceChildren(icon, document.createTextNode(data.publishedAt ? ' Recarregar publicação' : ' Atualizar dados do TSE'));
-      const local = data.source.startsWith('Arquivo local:');
-      const rows = Object.values(data.tables).reduce((n, table) => n + table.rows, 0);
-      const updated = data.publishedAt ? `Dados obtidos do TSE em ${timestamp(data.publishedAt)}. Publicação consultada` : local ? 'Arquivo local processado' : 'Fonte consultada';
-      setStatus(`${updated} em ${timestamp(data.loadedAt)}. ${data.accounts.toLocaleString('pt-BR')} contas e ${rows.toLocaleString('pt-BR')} lançamentos disponíveis.`, 'loaded');
-      $('search').disabled = false;
-      $('search').value = '';
-      $('search').placeholder = data.scope === 'candidates' ? 'Buscar candidatura…' : 'Buscar órgão partidário…';
-      for (const field of ['uf', 'party', 'office']) {
-        const label = field === 'office' ? (data.scope === 'candidates' ? 'Todos os cargos' : 'Todas as esferas') : 'Todos';
-        const select = $(field);
-        select.replaceChildren(new Option(label, ''));
-        data.options[field].forEach((value) => select.add(new Option(value, value)));
-        select.disabled = false;
-      }
-      $('office-label').textContent = data.scope === 'candidates' ? 'Cargo' : 'Esfera';
-      await renderList();
-    }
-  });
-  worker.postMessage({ type: 'load', scope: selectedScope(), file });
+  // Permite trocar de base mesmo durante o carregamento automático.
+  document.querySelectorAll('input[name=scope]').forEach((input) => { input.disabled = false; });
+  setStatus('Carregando a base selecionada…', 'busy');
+  try {
+    const entry = await requestBase(selectedScope(), file, refresh);
+    if (version !== loadVersion) return;
+    await activateBase(entry.worker, entry.data);
+  } catch (error) { if (version === loadVersion) finishLoading(error.message); }
 }
 function filters() { return { query: $('search').value, uf: $('uf').value, party: $('party').value, office: $('office').value }; }
 function context(account) {
@@ -158,6 +190,7 @@ async function selectAccount(account) {
   state.statementId = account.statements[0]?.id || '';
   state.kind = 'receipts';
   state.transactionPage = 0;
+  $('transaction-sort').value = 'original';
   $('statement').replaceChildren();
   for (const statement of account.statements) {
     const label = [statement.type, statement.date || 'Data não informada', statement.turn ? `${statement.turn}º turno` : ''].filter(Boolean).join(' · ');
@@ -182,13 +215,89 @@ function renderGroups(target, groups) {
     container.append(row);
   }
 }
+function comparisonRow(name, cents, sample) {
+  const row = element('tr');
+  const mean = sample?.count >= 2 ? sample.meanCents : null;
+  let difference = 'Não calculada';
+  if (cents !== null && mean !== null) {
+    if (mean === 0) difference = cents === 0 ? 'Mesmo valor (média zero)' : 'Média zero; percentual indefinido';
+    else if (mean < 0) difference = `Diferença: ${amount(cents - mean)}`;
+    else difference = new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1, signDisplay: 'exceptZero' }).format((cents - mean) / mean);
+  }
+  const denominator = element('td', `${sample?.count || 0} contas`);
+  denominator.append(element('small', `${sample?.excluded || 0} excluídas`));
+  row.append(element('td', name), element('td', amount(cents), 'numeric'), element('td', amount(mean), 'numeric'), element('td', difference, 'numeric'), denominator);
+  return row;
+}
+function comparisonTable(label, rows, collapse = false) {
+  const section = element(collapse ? 'details' : 'div', undefined, 'benchmark-group');
+  if (collapse) section.append(element('summary', label));
+  else section.append(element('h4', label));
+  const table = element('table');
+  const caption = element('caption', label, 'sr-only');
+  const head = element('thead'); const header = element('tr');
+  for (const name of ['Categoria', 'Candidatura', 'Média', 'Diferença (%)', 'Base do cálculo']) { const cell = element('th', name); cell.scope = 'col'; header.append(cell); }
+  head.append(header); const body = element('tbody'); body.append(...rows);
+  table.append(caption, head, body); const wrap = element('div', undefined, 'table-wrap'); wrap.append(table); section.append(wrap);
+  return section;
+}
+async function renderBenchmark(version) {
+  if (state.scope !== 'candidates') return;
+  try {
+    const cohort = await query('benchmark', { id: state.account.id, statementId: state.statementId });
+    if (version !== state.detailVersion) return;
+    if (!cohort) {
+      $('benchmark-context').textContent = 'Médias indisponíveis: consulte a prestação mais recente deste tipo e turno. O cálculo também exige eleição, cargo, UF, turno e data informados, além de uma publicação com médias.';
+      return;
+    }
+    const summary = state.summary;
+    $('benchmark-context').textContent = `${cohort.office} · ${cohort.uf} · ${cohort.type} · ${cohort.turn}º turno. ${cohort.accounts.toLocaleString('pt-BR')} contas do grupo, com prestações em datas possivelmente diferentes. A média exige pelo menos duas contas válidas por tabela.`;
+    const results = $('benchmark-results');
+    results.replaceChildren(comparisonTable('Totais da conta', Object.entries(TABLES).map(([kind, definition]) => comparisonRow(definition.label, summary.totals[kind].cents, cohort.totals[kind]))));
+    for (const [field, definition] of Object.entries(CATEGORIES)) {
+      const declared = new Map((summary[field] || []).map((group) => [group.name, group]));
+      const baseline = new Map(cohort.categories[field].map((group) => [group.name, group]));
+      const names = [...new Set([...baseline.keys(), ...declared.keys()])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      const rows = names.map((name) => {
+        const group = declared.get(name);
+        const cents = summary.totals[definition.kind].cents === null ? null : group ? (group.missing ? null : group.cents) : 0;
+        return comparisonRow(name, cents, baseline.get(name) || { ...cohort.totals[definition.kind], meanCents: 0 });
+      });
+      if (rows.length) results.append(comparisonTable(definition.label, rows, true));
+    }
+  } catch (error) { if (version === state.detailVersion) $('benchmark-context').textContent = error.message; }
+}
+async function renderContributors() {
+  if (!state.account) return;
+  const version = ++state.contributorVersion;
+  $('contributors').replaceChildren(element('p', 'Carregando repasses…', 'empty-value'));
+  $('contributor-prev').disabled = true; $('contributor-next').disabled = true;
+  try {
+    const result = await query('counterparties', { id: state.account.id, statementId: state.statementId,
+      filters: { query: $('contributor-search').value, origin: $('contributor-origin').value }, page: state.contributorPage });
+    if (version !== state.contributorVersion) return;
+    state.totalContributors = result.count;
+    const container = $('contributors'); container.replaceChildren();
+    for (const group of result.rows) {
+      const row = element('article', undefined, 'contributor-row');
+      row.append(element('strong', group.name), element('p', group.missing ? `Valor incompleto · ${group.missing} lançamento(s) sem valor` : amount(group.cents), 'contribution-amount'),
+        element('p', [group.origin || 'Origem não informada', group.source || 'Fonte não informada', group.nature || 'Natureza não informada'].join(' · ')), element('p', `${group.count.toLocaleString('pt-BR')} lançamento(s)`));
+      container.append(row);
+    }
+    if (!result.rows.length) container.append(element('p', 'Nenhum repasse encontrado para esta prestação e estes filtros.', 'empty-value'));
+    $('contributor-count').textContent = `${result.count.toLocaleString('pt-BR')} agrupamento(s) de repasses`;
+    const pages = Math.max(1, Math.ceil(result.count / 20));
+    $('contributor-page').textContent = `${state.contributorPage + 1} / ${pages}`;
+    $('contributor-prev').disabled = state.contributorPage === 0;
+    $('contributor-next').disabled = state.contributorPage + 1 >= pages;
+  } catch (error) { if (version === state.contributorVersion) $('contributors').replaceChildren(element('p', error.message, 'empty-value')); }
+}
 async function renderDetail() {
   if (!state.account) return;
   const version = ++state.detailVersion;
   $('account-detail').setAttribute('aria-busy', 'true');
   $('account-detail').hidden = true;
   $('welcome').hidden = false;
-  $('export').disabled = true;
   try {
     const summary = await query('summary', { id: state.account.id, statementId: state.statementId });
     if (version !== state.detailVersion) return;
@@ -211,6 +320,13 @@ async function renderDetail() {
     $('data-warning').hidden = !warnings.length;
     renderGroups('funding-sources', summary.sources);
     renderGroups('funding-origins', summary.origins);
+    $('contributor-search').value = '';
+    $('contributor-origin').replaceChildren(new Option('Todas as origens', ''));
+    for (const group of summary.origins) if (group.name !== 'Não informado') $('contributor-origin').add(new Option(group.name, group.name));
+    state.contributorPage = 0;
+    $('benchmark-section').hidden = state.scope !== 'candidates';
+    $('benchmark-context').textContent = 'Calculando as médias do grupo…';
+    $('benchmark-results').replaceChildren();
     const provenance = $('provenance');
     provenance.replaceChildren();
     const rows = [
@@ -231,8 +347,7 @@ async function renderDetail() {
     $('welcome').hidden = true;
     $('account-detail').hidden = false;
     $('account-detail').setAttribute('aria-busy', 'false');
-    $('export').disabled = false;
-    await renderTransactions();
+    await Promise.all([renderTransactions(), renderContributors(), renderBenchmark(version)]);
   } catch (error) { if (version === state.detailVersion) { $('account-detail').setAttribute('aria-busy', 'false'); showError(error.message); } }
 }
 async function renderTransactions() {
@@ -248,9 +363,9 @@ async function renderTransactions() {
   const loadingRow = element('tr'); const loadingCell = element('td', 'Carregando lançamentos…'); loadingCell.colSpan = 4; loadingRow.append(loadingCell); $('transaction-rows').replaceChildren(loadingRow);
   $('transaction-prev').disabled = true; $('transaction-next').disabled = true;
   $('counterparty-label').textContent = kind === 'receipts' ? 'Doador' : kind === 'contracted' ? 'Fornecedor' : 'Favorecido / fornecedor';
-  $('transaction-caption').textContent = `${TABLES[kind].label} de ${state.account.name}, na prestação selecionada. Ordem original do arquivo do TSE.`;
+  $('transaction-caption').textContent = `${TABLES[kind].label} de ${state.account.name}, na prestação selecionada. ${$('transaction-sort').selectedOptions[0].textContent}.`;
   try {
-    const result = await query('transactions', { id: state.account.id, statementId: state.statementId, kind, page: state.transactionPage });
+    const result = await query('transactions', { id: state.account.id, statementId: state.statementId, kind, page: state.transactionPage, order: $('transaction-sort').value });
     if (version !== state.transactionVersion) return;
     state.totalTransactions = result.count;
     const body = $('transaction-rows');
@@ -276,27 +391,7 @@ async function renderTransactions() {
     $('transaction-panel').setAttribute('aria-busy', 'false');
   } catch (error) { if (version === state.transactionVersion) { $('transaction-panel').setAttribute('aria-busy', 'false'); showError(error.message); } }
 }
-function exportSummary() {
-  if (!state.summary) return;
-  const summary = state.summary;
-  const decimal = (cents) => cents === null ? '' : (cents / 100).toFixed(2).replace('.', ',');
-  const rows = [['campo', 'valor'], ['conta', summary.account.name], ['identificador_tse', summary.account.prestador], ['partido', summary.account.party], ['uf', summary.account.uf], ['prestacao', summary.statement.type], ['data_prestacao', summary.statement.date], ['carregado_em', summary.loadedAt], ['fonte', summary.source]];
-  if (summary.publishedAt) rows.push(['dados_obtidos_do_tse_em', summary.publishedAt]);
-  for (const [kind, total] of Object.entries(summary.totals)) {
-    rows.push([TABLES[kind].label, decimal(total.cents)], [`Situação · ${TABLES[kind].label}`, total.cents === null ? metricLabel(total) : 'Valor declarado'], [`Lançamentos · ${TABLES[kind].label}`, total.count]);
-  }
-  for (const group of summary.sources) rows.push([`Fonte do recurso · ${group.name}`, group.missing ? 'Valor incompleto' : decimal(group.cents)]);
-  for (const group of summary.origins) rows.push([`Origem do repasse · ${group.name}`, group.missing ? 'Valor incompleto' : decimal(group.cents)]);
-  for (const [kind, table] of Object.entries(summary.tables)) {
-    rows.push([`Arquivo · ${TABLES[kind].label}`, table.filename], [`Gerado em · ${TABLES[kind].label}`, table.generations.join(' / ') || 'Não informado']);
-  }
-  const blob = new Blob(['\uFEFF', rows.map((row) => row.map(csvCell).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = element('a'); link.href = url; link.download = `prestaconta-2026-${summary.account.prestador.replace(/[^0-9A-Za-z_-]/g, '')}.csv`;
-  document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-$('load').addEventListener('click', () => load());
+$('load').addEventListener('click', () => load(undefined, true));
 $('cancel').addEventListener('click', () => { finishLoading(); setStatus(state.loaded ? `Carregamento cancelado. Continua visível a base carregada em ${timestamp(state.loaded.loadedAt)}.` : 'Carregamento cancelado. Nenhum dado foi carregado.'); });
 $('file').addEventListener('change', () => {
   const file = $('file').files[0];
@@ -308,8 +403,7 @@ $('file').addEventListener('change', () => {
 });
 document.querySelectorAll('input[name=scope]').forEach((radio) => radio.addEventListener('change', () => {
   $('file-name').textContent = 'Nenhum arquivo selecionado.';
-  if (state.loaded && state.scope !== selectedScope()) setStatus('Outra base foi selecionada. Clique em carregar para consultá-la; as contas visíveis ainda pertencem à base anterior.');
-  else if (state.loaded) setStatus(`Base carregada em ${timestamp(state.loaded.loadedAt)}.`, 'loaded');
+  load();
 }));
 let searchTimer;
 $('search').addEventListener('input', () => { clearTimeout(searchTimer); state.page = 0; searchTimer = setTimeout(renderList, 150); });
@@ -334,7 +428,18 @@ for (const tab of tabs) {
 }
 $('transaction-prev').addEventListener('click', () => { if (state.transactionPage) state.transactionPage--; renderTransactions(); });
 $('transaction-next').addEventListener('click', () => { if ((state.transactionPage + 1) * 20 < state.totalTransactions) state.transactionPage++; renderTransactions(); });
-$('export').addEventListener('click', exportSummary);
+$('transaction-sort').addEventListener('change', () => { state.transactionPage = 0; renderTransactions(); });
+let contributorTimer;
+$('contributor-search').addEventListener('input', () => { clearTimeout(contributorTimer); state.contributorPage = 0; contributorTimer = setTimeout(renderContributors, 150); });
+$('contributor-origin').addEventListener('change', () => { state.contributorPage = 0; renderContributors(); });
+$('contributor-prev').addEventListener('click', () => { if (state.contributorPage) state.contributorPage--; renderContributors(); });
+$('contributor-next').addEventListener('click', () => { if ((state.contributorPage + 1) * 20 < state.totalContributors) state.contributorPage++; renderContributors(); });
+$('open-methodology').addEventListener('click', () => $('methodology-dialog').showModal());
+$('close-methodology').addEventListener('click', () => $('methodology-dialog').close());
+$('methodology-dialog').addEventListener('click', (event) => {
+  const rect = $('methodology-dialog').getBoundingClientRect();
+  if (event.target === $('methodology-dialog') && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) $('methodology-dialog').close();
+});
 
 // A mesma navegação da interface, quando o navegador oferece WebMCP.
 if (document.modelContext?.registerTool) {
@@ -358,3 +463,7 @@ if (document.modelContext?.registerTool) {
     }, { signal: lifecycle.signal })).catch(() => {});
   } catch { /* O recurso é opcional e não afeta a consulta por pessoas. */ }
 }
+
+// Os dois índices oficiais publicados são preparados na abertura.
+load();
+requestBase('parties').catch(() => {});

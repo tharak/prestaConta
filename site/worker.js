@@ -87,7 +87,9 @@ self.addEventListener('message', async ({ data }) => {
       const accounts = store.list(data.filters);
       result = { accounts: accounts.slice(data.page * 25, (data.page + 1) * 25), count: accounts.length };
     } else if (data.type === 'summary') result = await store.summary(data.id, data.statementId);
-    else if (data.type === 'transactions') result = await store.transactions(data.id, data.statementId, data.kind, data.page, 20);
+    else if (data.type === 'benchmark') result = await store.benchmark(data.id, data.statementId);
+    else if (data.type === 'counterparties') result = await store.counterparties(data.id, data.statementId, data.filters, data.page);
+    else if (data.type === 'transactions') result = await store.transactions(data.id, data.statementId, data.kind, data.page, 20, data.order);
     else throw new Error('Consulta não reconhecida.');
     self.postMessage({ type: 'response', requestId: data.requestId, result });
   } catch (error) { self.postMessage({ type: 'response', requestId: data.requestId, error: error.message }); }
