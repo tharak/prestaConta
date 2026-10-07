@@ -1,32 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutPie, slicePath } from '../site/pie-chart.js';
-import { accountGroups, recordGroups, latestRecords, zoomFrame } from '../site/pie-navigation.js';
-
-test('pizza representa a soma conhecida sem alterar a ordem ou atribuir fatias a valores ausentes', () => {
-  const values = [{ id: 'A', cents: 100, missing: 1 }, { id: 'B', cents: 0 }, { id: 'C', cents: null }, { id: 'D', cents: 300 }];
-  const pie = layoutPie(values);
-  assert.equal(pie.total, 400);
-  assert.equal(pie.status, 'ready');
-  assert.deepEqual(pie.slices.map(({ id, share, start, end }) => ({ id, share, start, end })), [{ id: 'A', share: .25, start: 0, end: .25 }, { id: 'D', share: .75, start: .25, end: 1 }]);
-  assert.equal(pie.slices[0].missing, 1);
-  assert.equal(values[0].share, undefined);
-});
-
-test('totais negativos não são descartados nem transformados em participações de uma pizza', () => {
-  assert.deepEqual(layoutPie([{ cents: -20 }, { cents: 100 }]), { status: 'negative', total: 80, slices: [] });
-  for (const values of [[], [{ cents: 0 }], [{ cents: null }]]) assert.equal(layoutPie(values).status, 'empty');
-});
-
-test('uma única fatia ocupa o círculo inteiro; duas fatias usam arcos proporcionais', () => {
-  const full = slicePath(0, 1);
-  assert.equal((full.match(/ A /g) || []).length, 2);
-  assert.match(full, /160 30/);
-  assert.match(full, /160 290/);
-  assert.match(slicePath(0, .75), /0 1 1/);
-  assert.match(slicePath(0, .25), /0 0 1/);
-  assert.ok(!slicePath(.99, 1).includes('NaN'));
-});
+import { accountGroups, recordGroups, latestRecords, zoomFrame } from '../site/chart-navigation.js';
 
 function account(id, sphere, uf, cents, olderCents = 99900) {
   return { id, sphere, uf, statements: [{ totals: { receipts: { available: true, count: cents === null ? 0 : 1, missing: 0, knownCents: cents ?? 0 } } }, { totals: { receipts: { available: true, count: 1, missing: 0, knownCents: olderCents } } }] };

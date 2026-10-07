@@ -12,13 +12,11 @@
   <main>
     <section id="overview" class="chart-card card" tabindex="-1" aria-labelledby="chart-title">
       <div class="chart-heading"><h1 id="chart-title">Finanças dos partidos</h1><span class="chart-brand">PrestaConta · Eleições 2026</span></div>
-      <div class="view-toolbar"><div class="view-switch" role="tablist" aria-label="Visualização"><button id="view-pies" type="button" role="tab" aria-selected="true" aria-controls="pie-view">Pizzas</button><button id="view-mosaic" type="button" role="tab" aria-selected="false" aria-controls="mosaic-view" tabindex="-1">Mosaico</button></div><p id="view-hint" class="chart-note">Clique em uma fatia para explorar. Use a pizza ao fundo ou o caminho acima dela para voltar.</p></div>
       <div id="load-error" class="error" role="alert" hidden></div>
-      <div id="pie-view" role="tabpanel" aria-labelledby="view-pies"><div id="party-chart" class="party-chart pie-grid" aria-label="Receitas, despesas contratadas e despesas pagas por partido"><p class="chart-placeholder">Carregando os órgãos partidários…</p></div></div>
-      <div id="mosaic-view" role="tabpanel" aria-labelledby="view-mosaic" hidden><div class="metric-switch" role="group" aria-label="Medida representada pela área dos blocos"><button type="button" data-metric="receipts" aria-pressed="true">Receitas declaradas</button><button type="button" data-metric="contracted" aria-pressed="false">Despesas contratadas</button><button type="button" data-metric="paid" aria-pressed="false">Despesas pagas</button></div><div id="mosaic-content"><p class="chart-placeholder">Carregando os órgãos partidários…</p></div></div>
-      <div class="party-legend-heading"><h2>Partidos</h2><p id="legend-hint">Cores iguais nos três gráficos. Clique na sigla para explorar o partido nos três.</p></div>
-      <div id="party-legend" class="party-legend" role="group" aria-label="Partidos: explorar os três gráficos"></div>
-      <div id="chart-detail" class="sr-only" role="status" aria-live="polite">Clique nas fatias para explorar os dados.</div>
+      <div id="mosaic-view"><div class="metric-switch" role="group" aria-label="Medida representada pela área dos blocos"><button type="button" data-metric="receipts" aria-pressed="true">Receitas declaradas</button><button type="button" data-metric="contracted" aria-pressed="false">Despesas contratadas</button><button type="button" data-metric="paid" aria-pressed="false">Despesas pagas</button></div><div id="mosaic-content"><p class="chart-placeholder">Carregando os órgãos partidários…</p></div></div>
+      <div class="party-legend-heading"><h2>Partidos</h2><p id="legend-hint">Clique na sigla para explorar o partido, inclusive blocos pequenos e itens sem área.</p></div>
+      <div id="party-legend" class="party-legend" role="group" aria-label="Partidos: explorar no mosaico"></div>
+      <div id="chart-detail" class="sr-only" role="status" aria-live="polite">Clique nos blocos para explorar os dados.</div>
       <p class="chart-source"><a href="https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-2026" target="_blank" rel="noopener noreferrer" title="Movimentação bruta dos órgãos partidários em todo o Brasil, com a última prestação de cada conta. Repasses entre órgãos podem reaparecer como receita.">Fonte: TSE</a><span id="publication-date">Carregando a publicação…</span><button id="reload" class="text-button" type="button">Atualizar</button></p>
     </section>
   </main>
