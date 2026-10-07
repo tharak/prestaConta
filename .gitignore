@@ -1,0 +1,9 @@
+node_modules/
+output/
+.playwright-cli/
+.wrangler/
+.dev.vars
+*.zip
+*.csv
+.DS_Store
+dist/

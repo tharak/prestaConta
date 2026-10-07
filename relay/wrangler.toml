@@ -1,0 +1,6 @@
+name = "prestaconta-tse-relay"
+main = "worker.js"
+compatibility_date = "2026-10-07"
+
+[vars]
+ALLOWED_ORIGINS = "https://tharak.github.io"

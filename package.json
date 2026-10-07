@@ -1,0 +1,14 @@
+{
+  "name": "prestaconta",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Consulta das contas eleitorais de 2026 com dados carregados do TSE sob demanda.",
+  "scripts": {
+    "dev": "python3 -m http.server 8123 --bind 127.0.0.1 --directory site",
+    "preview": "python3 -m http.server 8124 --bind 127.0.0.1 --directory dist",
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

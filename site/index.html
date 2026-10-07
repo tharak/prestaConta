@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Consulte receitas, fontes de recursos e despesas declaradas ao TSE nas eleições de 2026. Dados oficiais carregados sob demanda.">
+  <meta name="theme-color" content="#103d46">
+  <title>PrestaConta · Contas eleitorais 2026</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23103d46'/%3E%3Cpath d='M9 8h10a6 6 0 010 12h-5v5H9zm5 5v2h5a1 1 0 000-2z' fill='%238be0ca'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#consulta">Ir para a consulta</a>
+  <header class="header">
+    <a class="brand" href="./" aria-label="PrestaConta, início"><span class="brand-mark" aria-hidden="true">p.</span>PrestaConta</a>
+    <div class="header-right"><span class="year">ELEIÇÕES 2026</span><a href="#metodologia">Como ler os dados</a></div>
+  </header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">TRANSPARÊNCIA ELEITORAL</p><h1>O dinheiro da campanha,<br><span>com a fonte à vista.</span></h1><p class="intro-copy">Consulte o que cada candidatura ou órgão partidário declarou receber e gastar.</p></div><div class="source-stamp"><span aria-hidden="true">↻</span><strong>Fonte oficial</strong><p>Atualização diária prevista.<br>Confira a data da publicação.</p><a href="https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-2026" target="_blank" rel="noopener noreferrer">Abrir dados oficiais</a></div></div>
+
+    <section id="consulta" class="loader card" aria-labelledby="consulta-titulo">
+      <div class="section-heading"><div><p class="eyebrow">01 / ESCOLHA A BASE</p><h2 id="consulta-titulo">De quem são as contas?</h2></div><span class="badge">Fonte: TSE / SPCE</span></div>
+      <div class="load-controls">
+        <fieldset class="scope"><legend class="sr-only">Base de prestação de contas</legend><label><input type="radio" name="scope" value="candidates" checked><span>Candidaturas</span></label><label><input type="radio" name="scope" value="parties"><span>Órgãos partidários</span></label></fieldset>
+        <button id="load" class="primary" type="button"><span aria-hidden="true">↻</span> Carregar base publicada</button>
+        <button id="cancel" class="secondary" type="button" hidden>Cancelar</button>
+      </div>
+      <p class="load-note">A publicação busca os arquivos atuais no TSE diariamente. Nenhum dado eleitoral é salvo no histórico do repositório; cada conta é carregada quando você a abre.</p>
+      <div id="status" class="status" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="status-text">Aguardando carregamento. Nenhum dado foi consultado ainda.</span></div>
+      <progress id="progress" aria-label="Progresso do carregamento" hidden></progress>
+      <div id="load-error" class="error" role="alert" hidden></div>
+      <details class="local-import"><summary>Já baixou o arquivo oficial do TSE?</summary><p>Abra o ZIP original da base selecionada. O processamento acontece no seu navegador, sem enviar o arquivo a um servidor.</p><label class="file-label" for="file">Selecionar ZIP do TSE</label><input id="file" class="sr-only" type="file" accept=".zip,application/zip"><span id="file-name">Nenhum arquivo selecionado.</span></details>
+    </section>
+
+    <section class="workspace" aria-label="Consulta das contas">
+      <aside class="account-panel card">
+        <p class="eyebrow">02 / ENCONTRE UMA CONTA</p><h2>Buscar na base</h2>
+        <label for="search">Nome ou número</label><input id="search" type="search" placeholder="Buscar candidatura…" disabled>
+        <div class="filter-pair"><div><label for="uf">Estado</label><select id="uf" disabled><option value="">Todos</option></select></div><div><label for="party">Partido</label><select id="party" disabled><option value="">Todos</option></select></div></div>
+        <label for="office" id="office-label">Cargo</label><select id="office" disabled><option value="">Todos os cargos</option></select>
+        <div class="results-meta"><span id="result-count">Nenhuma base carregada</span><button id="clear-filters" class="text-button" type="button" hidden>Limpar filtros</button></div>
+        <div id="account-list" class="account-list"><p class="empty-list">As contas aparecerão aqui após o carregamento, em ordem alfabética.</p></div>
+        <div id="list-pagination" class="list-pagination" hidden><button id="list-prev" class="secondary" type="button">Anterior</button><span id="list-page"></span><button id="list-next" class="secondary" type="button">Próxima</button></div>
+      </aside>
+
+      <div class="account-content">
+        <section id="welcome" class="welcome card"><div class="document-icon" aria-hidden="true"><span></span><span></span><span></span></div><p class="eyebrow">UMA CONTA DE CADA VEZ</p><h2>Receitas e despesas,<br>sem perder o contexto.</h2><p>Carregue a base e selecione uma conta para ver os valores declarados, a fonte dos recursos e os tipos de despesa.</p><div class="welcome-notes"><div><strong>Recebido</strong><span>Dinheiro e bens ou serviços estimáveis.</span></div><div><strong>Contratado</strong><span>Compromissos assumidos pela campanha.</span></div><div><strong>Pago</strong><span>Desembolsos informados na prestação.</span></div></div></section>
+        <section id="account-detail" hidden aria-labelledby="account-name">
+          <div class="account-heading"><div><p class="eyebrow" id="account-kind">CONTA DECLARADA</p><h2 id="account-name"></h2><p id="account-context"></p></div><button id="export" class="secondary" type="button">Baixar resumo CSV</button></div>
+          <div class="statement-control"><label for="statement">Prestação de contas</label><select id="statement"></select><p>Prestações diferentes são exibidas separadamente.</p></div>
+          <div class="metrics"><article class="metric card"><p>Receitas declaradas</p><strong id="received">—</strong><span id="received-note"></span></article><article class="metric card"><p>Despesas contratadas</p><strong id="contracted">—</strong><span>Compromissos, não pagamentos</span></article><article class="metric card"><p>Despesas pagas</p><strong id="paid">—</strong><span>Desembolsos declarados</span></article></div>
+          <div id="data-warning" class="notice" hidden></div>
+          <section class="card breakdown"><div class="section-heading"><div><p class="eyebrow">03 / ORIGEM DO DINHEIRO</p><h3>Como os recursos foram declarados</h3></div></div><p class="section-note">Fonte indica o tipo de recurso. Origem indica quem ou o que fez o repasse. São duas leituras da mesma receita; não se somam.</p><div class="breakdown-grid"><div><h4>Fonte do recurso</h4><div id="funding-sources"></div></div><div><h4>Origem do repasse</h4><div id="funding-origins"></div></div></div><p class="footnote">“Outros recursos” é a classificação do TSE; ela não permite concluir, sozinha, que todo o valor veio de doações privadas. Recursos de campanha não representam patrimônio pessoal.</p></section>
+          <section class="card transactions"><div class="section-heading"><div><p class="eyebrow">04 / LANÇAMENTOS DECLARADOS</p><h3>Receitas e despesas da conta</h3></div></div><div class="tabs" role="tablist" aria-label="Tipo de lançamento"><button id="tab-receipts" role="tab" aria-controls="transaction-panel" aria-selected="true" tabindex="0" data-kind="receipts">Receitas</button><button id="tab-contracted" role="tab" aria-controls="transaction-panel" aria-selected="false" tabindex="-1" data-kind="contracted">Contratadas</button><button id="tab-paid" role="tab" aria-controls="transaction-panel" aria-selected="false" tabindex="-1" data-kind="paid">Pagas</button></div><div id="transaction-panel" role="tabpanel" aria-labelledby="tab-receipts"><div class="table-wrap"><table><caption id="transaction-caption" class="sr-only">Lançamentos da conta selecionada</caption><thead><tr><th scope="col">Data</th><th scope="col" id="counterparty-label">Doador</th><th scope="col">Descrição declarada</th><th scope="col" class="numeric">Valor</th></tr></thead><tbody id="transaction-rows"></tbody></table></div><div class="table-footer"><span id="transaction-count"></span><div><button id="transaction-prev" class="secondary" type="button">Anterior</button><span id="transaction-page"></span><button id="transaction-next" class="secondary" type="button">Próxima</button></div></div></div></section>
+          <section class="provenance card"><h3>De onde vêm estes números</h3><div id="provenance"></div><p>Os valores refletem os arquivos obtidos do TSE na data indicada. Consultar ou recarregar esta página não força uma atualização no TSE. A data da consulta é diferente da geração dos CSV. Valores ausentes não são tratados como zero.</p><a href="https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-2026" target="_blank" rel="noopener noreferrer">Consultar a fonte oficial</a></section>
+        </section>
+      </div>
+    </section>
+
+    <section id="metodologia" class="methodology"><div><p class="eyebrow">LEIA COM CONTEXTO</p><h2>O que os dados dizem.</h2><p>Uma prestação de contas registra movimentações declaradas. A base pode ser atualizada ou retificada.</p></div><div class="method-details"><details open><summary>Recebido, contratado e pago são valores diferentes</summary><p>Receitas podem incluir dinheiro e bens ou serviços estimáveis. Despesas contratadas são compromissos; despesas pagas são desembolsos. Não somamos contratado e pago, nem calculamos saldo a partir dessas bases.</p></details><details><summary>Repasse partidário não identifica a fonte sozinho</summary><p>Um partido pode repassar recursos de diferentes fontes. A consulta mantém separados os campos de fonte, origem e natureza publicados pelo TSE, sem atribuir uma origem privada a categorias desconhecidas.</p></details><details><summary>Órgãos partidários e candidaturas têm contas próprias</summary><p>Um repasse pode aparecer como saída em uma conta e entrada em outra. Cada conta é exibida separadamente; não somamos esses fluxos como se fossem novos recursos. Os lançamentos de doadores originários não são adicionados às receitas.</p></details><details><summary>Ausência de lançamento não significa ausência de movimentação</summary><p>A consulta abrange as contas presentes nos arquivos de receitas e despesas carregados. Não é um cadastro de todas as candidaturas. Quando uma tabela não está disponível, mostramos “não disponível”. Quando ela existe mas não tem lançamentos para aquela prestação, mostramos essa ausência explicitamente.</p></details><details><summary>Atualização e processamento</summary><p>GitHub Actions consulta o TSE uma vez por dia e publica os dados processados junto da página, sem gravá-los no histórico do repositório. A agenda pode atrasar; confira a data de obtenção. Se uma atualização falhar, a publicação anterior permanece disponível. Recarregar a publicação apenas consulta a versão já publicada. Usamos somente os CSV nacionais com sufixo BRASIL. A abertura opcional do ZIP acontece no navegador, sem upload.</p></details></div></section>
+  </main>
+  <footer><a class="brand footer-brand" href="./">PrestaConta<span class="footer-year">2026</span></a><p>Dados: Tribunal Superior Eleitoral · Sistema SPCE<br>Projeto independente, sem vínculo com o TSE.</p><a href="#consulta">Voltar à consulta</a></footer>
+</body>
+</html>
