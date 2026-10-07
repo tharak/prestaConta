@@ -10,5 +10,5 @@
     "test": "node --test --test-isolation=none tests/*.test.mjs",
     "build": "node scripts/build.mjs"
   },
-  "engines": { "node": ">=22" }
+  "engines": { "node": ">=24" }
 }

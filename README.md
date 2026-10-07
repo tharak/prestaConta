@@ -6,7 +6,7 @@ Fonte primária: [Prestação de Contas Eleitorais — 2026, TSE](https://dadosa
 
 ## Executar
 
-Requisitos: Python 3 e Node.js 22 ou mais recente. Não há dependências npm para instalar.
+Requisitos: Python 3 e Node.js 24 ou mais recente. Não há dependências npm para instalar.
 
 ```sh
 npm run dev

@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Verificar parser e relay
         run: npm test
       - name: Preparar página estática
