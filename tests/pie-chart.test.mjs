@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutPie, slicePath } from '../site/pie-chart.js';
-import { accountGroups, recordGroups, latestRecords } from '../site/pie-navigation.js';
+import { accountGroups, recordGroups, latestRecords, zoomFrame } from '../site/pie-navigation.js';
 
 test('pizza representa a soma conhecida sem alterar a ordem ou atribuir fatias a valores ausentes', () => {
   const values = [{ id: 'A', cents: 100, missing: 1 }, { id: 'B', cents: 0 }, { id: 'C', cents: null }, { id: 'D', cents: 300 }];
@@ -59,4 +59,34 @@ test('detalhes unificam variações de caixa sem reunir datas, turnos ou tipos d
   const entry = (changes, cents) => ({ summary: { statement: { ...statement, ...changes } }, records: { receipts: [{ cents }] } });
   const document = { statements: [entry({}, 100), entry({ type: 'PARCIAL' }, 200), entry({ date: '01/09/2026' }, 999), entry({ turn: '2' }, 999), entry({ type: 'Final' }, 999)] };
   assert.deepEqual(latestRecords(document, statement, 'receipts').map((row) => row.cents), [100, 200]);
+});
+
+test('zoom pula níveis com uma só parcela e conserva a composição e o contexto selecionado', async () => {
+  const entry = { id: 'A', label: 'Seleção inicial', level: 'party', cents: 300 };
+  const sphere = { id: 'S', level: 'sphere', cents: 300 };
+  const frame = { title: 'Esfera única', dimension: 'Órgãos por estado', nodes: [{ id: 'SP', level: 'uf', cents: 100 }, { id: 'RJ', level: 'uf', cents: 200 }] };
+  const calls = [];
+  const result = await zoomFrame(entry, async (part) => { calls.push(part.id); return part === entry ? { nodes: [sphere, { cents: 0 }, { cents: null }] } : frame; });
+  assert.deepEqual(calls, ['A', 'S']);
+  assert.equal(result.title, 'Seleção inicial');
+  assert.equal(result.dimension, frame.dimension);
+  assert.equal(result.nodes, frame.nodes);
+});
+
+test('zoom não cria gráfico para uma cadeia sem subdivisões, folhas ou ausência de valores', async () => {
+  const entry = { id: 'A', label: 'A', level: 'origin', cents: 100, missing: 1 };
+  assert.equal(await zoomFrame(entry, async () => ({ nodes: [{ level: 'leaf', cents: 100, missing: 1 }] })), null);
+  assert.equal(await zoomFrame(entry, async () => ({ nodes: [{ cents: 0 }, { cents: null }] })), null);
+  assert.equal(await zoomFrame(entry, async () => null), null);
+  const never = async () => { throw new Error('Não deve procurar filhos'); };
+  assert.equal(await zoomFrame({ ...entry, level: 'leaf' }, never), null);
+  assert.equal(await zoomFrame({ ...entry, cents: 0 }, never), null);
+});
+
+test('zoom não esconde categorias negativas ou parcelas incompletas ao pular níveis', async () => {
+  const entry = { label: 'A', level: 'account', cents: 100 };
+  for (const nodes of [[{ cents: 120 }, { cents: -20 }], [{ cents: 100 }, { cents: 0, missing: 1 }]]) {
+    const frame = { dimension: 'Categorias', nodes };
+    assert.equal((await zoomFrame(entry, async () => frame)).nodes, nodes);
+  }
 });

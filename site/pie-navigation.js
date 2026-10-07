@@ -1,5 +1,22 @@
 import { alphabetic, fold } from './data.js';
 
+// Só cria um novo gráfico quando existe uma subdivisão. Níveis com uma única
+// parcela são atravessados para alcançar a próxima composição, se houver.
+export async function zoomFrame(entry, next) {
+  if (!(entry.cents > 0)) return null;
+  let current = entry;
+  while (current.level !== 'leaf') {
+    const frame = await next(current);
+    if (!frame) return null;
+    const parts = frame.nodes.filter((part) => part.cents > 0);
+    // Não esconder parcelas negativas ou registros incompletos ao pular níveis.
+    if (parts.length > 1 || frame.nodes.some((part) => part.cents < 0 || (part !== parts[0] && part.missing))) return { ...frame, title: entry.label };
+    if (parts.length !== 1) return null;
+    current = parts[0];
+  }
+  return null;
+}
+
 export function accountGroups(accounts, kind, field) {
   const groups = new Map();
   for (const account of accounts) {
