@@ -5,6 +5,7 @@ import { TABLES, alphabetic } from './data.js';
 import { accountGroups, recordGroups, latestRecords, zoomFrame } from './chart-navigation.js';
 import { layoutTreemap } from './treemap.js';
 import { FlowView } from './flow-view.js';
+import { NetworkView } from './network-view.js';
 import { candidateNodes, candidateContext, candidateDimension, findCandidates, buildCandidateFlow } from './candidate-overview.js';
 
 const $ = (id) => document.getElementById(id);
@@ -21,13 +22,17 @@ const series = Object.entries(TABLES).map(([kind, definition]) => ({ kind, label
 const mosaicStates = new Map();
 let mosaicMetric = 'receipts', activeView = 'mosaic';
 const partyColors = new Map();
-const flowView = new FlowView($('flow-content'), partyColors, candidates ? {
+const relationOptions = candidates ? {
   buildGraph: buildCandidateFlow, rootTitle: 'Todas as candidaturas', entities: 'candidaturas',
   instruction: 'Passe o mouse ou toque para ver os valores. Clique em um cargo, estado ou grupo para explorar.',
   canExplore: (entry, context) => Boolean(entry.navigation) && (entry.navigation.level !== 'account' || context.stage !== 'selected'),
   nextContext: (entry) => candidateContext(entry.navigation),
   note: 'Última prestação de cada conta de candidatura. Receitas e despesas são agregadas separadamente; as ligações não identificam qual receita financiou cada despesa.',
-} : {});
+} : {};
+const flowView = new FlowView($('flow-content'), partyColors, relationOptions);
+const networkView = new NetworkView($('network-content'), partyColors, relationOptions);
+const views = ['mosaic', 'flow', 'network'];
+const relationView = () => activeView === 'network' ? networkView : flowView;
 const zoomCache = new WeakMap();
 const canZoom = (entry) => entry.level !== 'leaf' && entry.hasZoom !== false && entry.cents > 0;
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -48,13 +53,14 @@ async function load() {
     accountIndexPromise = undefined;
     mosaicStates.clear();
     flowView.setData(data);
+    networkView.setData(data);
     $('publication-date').textContent = `Dados obtidos do TSE em ${timestamp(data.updatedAt)}`;
     render();
     if (candidates) renderCandidateSearch();
   } catch (error) {
     $('load-error').replaceChildren(node('p', `${error.message} Use “Atualizar” para tentar novamente.`)); $('load-error').hidden = false;
     $('publication-date').textContent = data ? `A atualização falhou. Continua visível a publicação de ${timestamp(data.updatedAt)}.` : 'Não foi possível carregar os dados.';
-    if (!data) for (const id of ['mosaic-content', 'flow-content']) $(id).replaceChildren(node('p', 'Gráfico indisponível até o carregamento da fonte.', 'chart-placeholder'));
+    if (!data) for (const id of ['mosaic-content', 'flow-content', 'network-content']) $(id).replaceChildren(node('p', 'Gráfico indisponível até o carregamento da fonte.', 'chart-placeholder'));
   } finally { $('reload').disabled = false; }
 }
 function render() {
@@ -62,7 +68,7 @@ function render() {
   result = aggregateParties(data);
   result.parties.forEach((party, index) => partyColors.set(party.party, `hsl(${(index * 137.508 + 164) % 360} 48% ${index % 2 ? 43 : 36}%)`));
   renderPartyLegend();
-  if (activeView === 'mosaic') renderMosaic(); else flowView.render();
+  if (activeView === 'mosaic') renderMosaic(); else relationView().render();
 }
 function colorAt(index) { return `hsl(${(index * 137.508 + 164) % 360} 48% ${index % 2 ? 43 : 36}%)`; }
 function decorate(nodes, level) { return nodes.map((entry, index) => ({ ...entry, level, color: colorAt(index) })); }
@@ -220,7 +226,7 @@ function renderPartyLegend() {
       const swatch = node('span', undefined, 'chart-swatch'); swatch.style.backgroundColor = entry.color; swatch.setAttribute('aria-hidden', 'true');
       button.append(swatch, node('span', entry.label)); button.setAttribute('aria-label', `Explorar candidaturas: ${entry.label}`);
       button.addEventListener('click', () => {
-        if (activeView === 'flow') { flowView.navigate(candidateContext(entry)); return; }
+        if (activeView !== 'mosaic') { relationView().navigate(candidateContext(entry)); return; }
         const state = mosaicStates.get(mosaicMetric); if (!state) return;
         state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic();
         state.advance(state.frames[0].nodes.find((part) => part.id === entry.id));
@@ -233,16 +239,16 @@ function renderPartyLegend() {
     const button = node('button', undefined, 'chart-key'); button.type = 'button';
     const swatch = node('span', undefined, 'chart-swatch'); swatch.style.backgroundColor = partyColors.get(party.party); swatch.setAttribute('aria-hidden', 'true');
     button.append(swatch, node('span', party.party)); button.dataset.party = party.party;
-    button.setAttribute('aria-label', `Explorar ${party.party} no ${activeView === 'mosaic' ? 'mosaico' : 'fluxo'}`);
+    button.setAttribute('aria-label', `Explorar ${party.party} no ${activeView === 'mosaic' ? 'mosaico' : activeView === 'network' ? 'grafo' : 'fluxo'}`);
     const show = () => {
       $('chart-detail').textContent = `${party.party} · ${series.map((item) => `${item.label}: ${exact(chartValue(party, item))}`).join(' · ')}`;
-      if (activeView === 'flow') { flowView.highlightParty?.(party.party); return; }
+      if (activeView !== 'mosaic') { relationView().highlightParty?.(party.party); return; }
       const state = mosaicStates.get(mosaicMetric);
       if (state?.frames.length === 1) state.show(state.frames[0].nodes.find((entry) => entry.id === party.party));
     };
     button.addEventListener('pointerenter', show); button.addEventListener('focus', show);
     button.addEventListener('click', () => {
-      if (activeView === 'flow') { flowView.selectParty(party.party); return; }
+      if (activeView !== 'mosaic') { relationView().selectParty(party.party); return; }
       const state = mosaicStates.get(mosaicMetric); if (!state) return;
       state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic();
       state.advance(state.frames[0].nodes.find((entry) => entry.id === party.party));
@@ -251,26 +257,26 @@ function renderPartyLegend() {
 }
 function setView(view) {
   activeView = view;
-  for (const name of ['mosaic', 'flow']) {
+  for (const name of views) {
     const button = $(`view-${name}`); button.setAttribute('aria-selected', String(name === view)); button.tabIndex = name === view ? 0 : -1;
     $(`${name}-view`).hidden = name !== view;
   }
   $('legend-hint').textContent = candidates ? 'Clique no cargo para explorar suas candidaturas.' : view === 'mosaic' ? 'Clique na sigla para explorar o partido, inclusive blocos pequenos e itens sem área.' : 'Clique na sigla para ver as origens e as despesas do partido.';
-  $('party-legend').setAttribute('aria-label', `${candidates ? 'Cargos' : 'Partidos'}: explorar no ${view === 'mosaic' ? 'mosaico' : 'fluxo'}`);
+  $('party-legend').setAttribute('aria-label', `${candidates ? 'Cargos' : 'Partidos'}: explorar no ${view === 'mosaic' ? 'mosaico' : view === 'network' ? 'grafo' : 'fluxo'}`);
   if (result) renderPartyLegend();
-  if (view === 'mosaic') renderMosaic(); else flowView.render();
+  if (view === 'mosaic') renderMosaic(); else relationView().render();
 }
-for (const view of ['mosaic', 'flow']) {
+for (const view of views) {
   $(`view-${view}`).addEventListener('click', () => setView(view));
   $(`view-${view}`).addEventListener('keydown', (event) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault(); const next = event.key === 'Home' ? 'mosaic' : event.key === 'End' ? 'flow' : activeView === 'mosaic' ? 'flow' : 'mosaic'; setView(next); $(`view-${next}`).focus();
+    event.preventDefault(); const next = event.key === 'Home' ? views[0] : event.key === 'End' ? views.at(-1) : views[(views.indexOf(activeView) + (event.key === 'ArrowRight' ? 1 : views.length - 1)) % views.length]; setView(next); $(`view-${next}`).focus();
   });
 }
-for (const field of ['incoming', 'outgoing']) for (const button of $('flow-view').querySelectorAll(`[data-${field}]`)) button.addEventListener('click', () => {
-  flowView[field] = button.dataset[field];
-  for (const control of $('flow-view').querySelectorAll(`[data-${field}]`)) control.setAttribute('aria-pressed', String(control.dataset[field] === flowView[field]));
-  flowView.render();
+for (const [view, panel] of [[flowView, $('flow-view')], [networkView, $('network-view')]]) for (const field of ['incoming', 'outgoing']) for (const button of panel.querySelectorAll(`[data-${field}]`)) button.addEventListener('click', () => {
+  view[field] = button.dataset[field];
+  for (const control of panel.querySelectorAll(`[data-${field}]`)) control.setAttribute('aria-pressed', String(control.dataset[field] === view[field]));
+  view.render();
 });
 let searchPage = 0;
 function renderCandidateSearch() {
@@ -287,7 +293,7 @@ function renderCandidateSearch() {
     button.addEventListener('click', () => {
       const entry = candidateNodes([account], mosaicMetric, 'names')[0];
       $('candidate-search').value = ''; renderCandidateSearch();
-      if (activeView === 'flow') flowView.navigate(candidateContext(entry));
+      if (activeView !== 'mosaic') relationView().navigate(candidateContext(entry));
       else {
         const state = mosaicStates.get(mosaicMetric); state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic(); state.advance(entry);
       }
@@ -310,5 +316,5 @@ for (const button of $('mosaic-view').querySelectorAll('[data-metric]')) button.
   renderMosaic();
 });
 let mosaicResizeTimer;
-window.addEventListener('resize', () => { clearTimeout(mosaicResizeTimer); mosaicResizeTimer = setTimeout(() => activeView === 'mosaic' ? renderMosaic() : flowView.render(), 100); });
+window.addEventListener('resize', () => { clearTimeout(mosaicResizeTimer); mosaicResizeTimer = setTimeout(() => activeView === 'mosaic' ? renderMosaic() : relationView().render(), 100); });
 load();
