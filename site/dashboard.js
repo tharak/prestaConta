@@ -32,6 +32,8 @@ const relationOptions = candidates ? {
 const flowView = new FlowView($('flow-content'), partyColors, relationOptions);
 const networkView = new NetworkView($('network-content'), partyColors, relationOptions);
 const views = ['mosaic', 'flow', 'network'];
+const viewHashes = { mosaic: 'mosaico', flow: 'fluxo', network: 'grafo' };
+const viewFromLocation = () => location.hash ? views.find((view) => location.hash === `#${viewHashes[view]}`) : 'mosaic';
 const relationView = () => activeView === 'network' ? networkView : flowView;
 const zoomCache = new WeakMap();
 const canZoom = (entry) => entry.level !== 'leaf' && entry.hasZoom !== false && entry.cents > 0;
@@ -255,8 +257,15 @@ function renderPartyLegend() {
     }); legend.append(button);
   }
 }
-function setView(view) {
+function setView(view, updateUrl = true) {
   activeView = view;
+  const hash = view === 'mosaic' ? '' : `#${viewHashes[view]}`;
+  if (updateUrl && location.hash !== hash) {
+    const url = new URL(location.href); url.hash = hash; history.replaceState(null, '', url);
+  }
+  for (const link of document.querySelectorAll('.scope-nav a')) {
+    const url = new URL(link.href); url.hash = hash; link.href = url.href;
+  }
   for (const name of views) {
     const button = $(`view-${name}`); button.setAttribute('aria-selected', String(name === view)); button.tabIndex = name === view ? 0 : -1;
     $(`${name}-view`).hidden = name !== view;
@@ -317,4 +326,6 @@ for (const button of $('mosaic-view').querySelectorAll('[data-metric]')) button.
 });
 let mosaicResizeTimer;
 window.addEventListener('resize', () => { clearTimeout(mosaicResizeTimer); mosaicResizeTimer = setTimeout(() => activeView === 'mosaic' ? renderMosaic() : relationView().render(), 100); });
+window.addEventListener('hashchange', () => { const view = viewFromLocation(); if (view) setView(view, false); });
+setView(viewFromLocation() || 'mosaic', false);
 load();

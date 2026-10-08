@@ -101,6 +101,8 @@ O resumo dos candidatos é publicado com os mesmos totais, categorias e data dos
 
 ## Grafo de relações financeiras
 
+Acesso direto: [`candidatos.html#grafo`](https://tharak.github.io/prestaConta/candidatos.html#grafo) para candidatos e [`#grafo`](https://tharak.github.io/prestaConta/#grafo) para partidos. Trocar entre Partidos e Candidatos mantém a visualização selecionada; a aba também é mantida ao recarregar a página ou compartilhar o endereço.
+
 A aba **Grafo**, disponível nas duas bases, conecta origens ou fontes dos recursos → partidos ou grupos de candidaturas → categorias das despesas. Setas indicam a direção dos lançamentos. Nós e linhas têm tamanho constante: selecionar um nó mostra os totais; selecionar uma ligação mostra o valor declarado daquela relação, incluindo registros sem valor. Categorias negativas permanecem no grafo com linhas tracejadas e o sinal explícito nos detalhes. Os totais são os mesmos do fluxo, mantendo contratos e pagamentos separados.
 
 Arraste os nós para reorganizar a rede ou o fundo para mover a visão. Use os botões de zoom, a roda do mouse ou dois dedos no celular; “Ajustar” enquadra a rede inteira. O teclado permite selecionar nós e ligações, ampliar com +/−, mover com as setas e ajustar com 0. Nós com + abrem o partido, cargo, estado, grupo de candidaturas ou categorias agrupadas; o botão de voltar retorna um passo. Busca e legenda também abrem a seleção no grafo. Histórico, zoom e posições são preservados ao alternar as abas; a atualização da publicação reinicia a navegação. Não há conciliação automática de doações entre as duas bases.
