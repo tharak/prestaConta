@@ -15,12 +15,12 @@ export function networkNodeRadii(nodes) {
 }
 
 export function layoutNetwork(graph) {
-  const width = 1280, centerColumns = Math.min(3, graph.columns[1].length || 1);
+  const centerColumns = Math.min(graph.centerColumns || 3, graph.columns[1].length || 1), width = 1280 + Math.max(0, centerColumns - 3) * 190;
   const nodeRadii = networkNodeRadii(graph.columns[1]);
   const height = Math.max(560, ...graph.columns.map((rows, index) => (index === 1 ? Math.ceil(rows.length / centerColumns) * 136 : rows.length * 84) + 130));
   const nodes = graph.columns.flatMap((rows, side) => rows.map((entry, index) => {
     const columns = side === 1 ? centerColumns : 1, row = Math.floor(index / columns), count = Math.ceil(rows.length / columns);
-    const x = side === 0 ? 160 : side === 2 ? 1120 : 640 + (index % columns - (columns - 1) / 2) * 190;
+    const x = side === 0 ? 160 : side === 2 ? width - 160 : width / 2 + (index % columns - (columns - 1) / 2) * 190;
     const slot = side === 1 ? 136 : 84, y = (height - count * slot) / 2 + row * slot + 22;
     return { ...entry, x, y, anchorX: x, anchorY: y, radius: side === 1 ? nodeRadii.radii.get(entry.id) : 8 };
   }));
@@ -31,7 +31,9 @@ export function layoutNetwork(graph) {
   });
   // Molas e repulsão aproximam os nós ligados, mantendo espaço para os rótulos.
   // A disposição é determinística, inclusive para contas sem valor ou ligação.
-  for (let step = 0; step < 100; step++) {
+  // Redes maiores já têm uma grade sem sobreposição; evitar a simulação
+  // quadrática mantém expansões sucessivas responsivas.
+  for (let step = 0, steps = nodes.length > 240 ? 0 : 100; step < steps; step++) {
     const forces = new Map(nodes.map((entry) => [entry.id, { x: (entry.anchorX - entry.x) * .08, y: (entry.anchorY - entry.y) * .08 }]));
     for (const edge of links) {
       const source = byId.get(edge.source), target = byId.get(edge.target), dx = target.x - source.x, dy = target.y - source.y;
@@ -50,7 +52,9 @@ export function layoutNetwork(graph) {
     }
     for (const entry of nodes) {
       const force = forces.get(entry.id);
-      entry.x = Math.max(100, Math.min(width - 100, entry.x + Math.max(-4, Math.min(4, force.x))));
+      const minX = entry.side === 'incoming' ? 100 : entry.side === 'outgoing' ? width - 220 : 400;
+      const maxX = entry.side === 'incoming' ? 220 : entry.side === 'outgoing' ? width - 100 : width - 400;
+      entry.x = Math.max(minX, Math.min(maxX, entry.x + Math.max(-4, Math.min(4, force.x))));
       entry.y = Math.max(40, Math.min(height - 80, entry.y + Math.max(-4, Math.min(4, force.y))));
     }
   }

@@ -32,10 +32,11 @@ export class NetworkView extends FlowView {
     const state = cached.get(key), { layout } = state;
     const lineWidths = networkLineWidths(layout.links);
     const byId = new Map(layout.nodes.map((entry) => [entry.id, entry]));
+    const edgesById = new Map(layout.links.map((entry) => [entry.id, entry]));
     const outgoingLabel = this.outgoing === 'paid' ? 'Despesas pagas' : 'Despesas contratadas';
     const toolbar = node('div', undefined, 'flow-toolbar');
     const back = node('button', '←', 'mosaic-back'); back.type = 'button'; back.id = 'network-back'; back.disabled = this.frames.length === 1;
-    back.setAttribute('aria-label', 'Voltar um nível no grafo'); back.title = 'Voltar um nível';
+    back.setAttribute('aria-label', this.options.backLabel || 'Voltar um nível no grafo'); back.title = this.options.backLabel || 'Voltar um nível';
     back.addEventListener('click', () => { this.frames.pop(); this.render(true); });
     const title = node('strong', context.title || context.party || this.options.rootTitle || 'Todos os partidos', 'flow-context'); title.tabIndex = -1;
     const totals = node('div', undefined, 'flow-totals');
@@ -48,7 +49,7 @@ export class NetworkView extends FlowView {
     const tools = node('div', undefined, 'network-tools'); tools.setAttribute('role', 'group'); tools.setAttribute('aria-label', 'Zoom do grafo');
     const zoomLabel = node('span', '', 'network-zoom');
     const tool = (label, accessible, action) => { const button = node('button', label); button.type = 'button'; button.setAttribute('aria-label', accessible); button.title = accessible; button.addEventListener('click', action); tools.append(button); return button; };
-    const detail = node('p', 'Selecione um nó ou uma ligação para ver os valores. Arraste para mover; clique nos nós com + para explorar.', 'mosaic-detail'); detail.setAttribute('role', 'status'); detail.setAttribute('aria-live', 'polite');
+    const detail = node('p', this.options.instruction || 'Selecione um nó ou uma ligação para ver os valores. Arraste para mover; clique nos nós com + para explorar.', 'mosaic-detail'); detail.setAttribute('role', 'status'); detail.setAttribute('aria-live', 'polite');
     viewport.append(svg, tools);
     this.container.replaceChildren(toolbar, viewport, detail);
     const width = viewport.clientWidth || 1000, height = viewport.clientHeight || 620;
@@ -86,6 +87,11 @@ export class NetworkView extends FlowView {
       detail.replaceChildren(node('strong', label), document.createTextNode(` · ${edge ? exact(entry) : valueLabel(entry)}`));
     };
     this.highlightParty = (party) => { const entry = layout.nodes.find((entry) => entry.party === party); if (entry) highlight(entry); };
+    this.focusNode = (party) => {
+      const entry = layout.nodes.find((entry) => entry.party === party); if (!entry) return;
+      zoom(Math.max(1, .8 / camera.k)); camera.x = width / 2 - entry.x * camera.k; camera.y = height / 2 - entry.y * camera.k; transform();
+      nodeControls.get(entry.id)?.focus({ preventScroll: true }); highlight(entry);
+    };
     const clear = () => svg.classList.remove('has-highlight');
     const redraw = () => {
       for (const entry of layout.nodes) nodeControls.get(entry.id)?.setAttribute('transform', `translate(${entry.x} ${entry.y})`);
@@ -97,7 +103,7 @@ export class NetworkView extends FlowView {
       const control = svgNode('g', { class: `network-edge${entry.cents < 0 ? ' is-negative' : ''}`, tabindex: 0, role: 'button', 'data-network-edge': entry.id, 'aria-label': label });
       const thickness = lineWidths.widths.get(entry.id);
       control.append(svgNode('title', {}, label), svgNode('path', { class: 'network-edge-hit', fill: 'none', 'stroke-width': 16 }), svgNode('path', { class: 'network-edge-line', fill: 'none', stroke: this.colors.get(entry.party) || '#367c72', 'stroke-width': thickness, ...(thickness ? { 'marker-end': 'url(#network-arrow)' } : {}) }));
-      control.addEventListener('pointerenter', () => highlight(entry, true)); control.addEventListener('focus', () => highlight(entry, true)); control.addEventListener('click', () => highlight(entry, true));
+      control.addEventListener('focus', () => highlight(entry, true)); control.addEventListener('click', () => highlight(entry, true));
       control.addEventListener('keydown', (event) => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); highlight(entry, true); } });
       edgeControls.push({ entry, control }); edges.append(control);
     }
@@ -111,9 +117,12 @@ export class NetworkView extends FlowView {
       const activate = () => {
         highlight(entry);
         if (entry.children) this.navigate({ ...context, expanded: [...context.expanded, entry.expandSide] });
-        else if (explore) { if (this.options.nextContext) this.navigate(this.options.nextContext(entry)); else this.selectParty(entry.party); }
+        else if (explore) {
+          if (this.options.nextContext) { const next = this.options.nextContext(entry, context, this.data); if (next !== context) this.navigate(next); }
+          else this.selectParty(entry.party);
+        }
       };
-      control.addEventListener('pointerenter', () => highlight(entry)); control.addEventListener('focus', () => {
+      control.addEventListener('focus', () => {
         highlight(entry);
         const x = camera.x + entry.x * camera.k, y = camera.y + entry.y * camera.k;
         if (x < 80 || x > width - 80 || y < 80 || y > height - 80) { camera.x = width / 2 - entry.x * camera.k; camera.y = height / 2 - entry.y * camera.k; transform(); }
@@ -140,7 +149,11 @@ export class NetworkView extends FlowView {
       pointers.set(event.pointerId, { ...point(event), node: byId.get(id), capture }); begin(); capture.setPointerCapture(event.pointerId);
     });
     svg.addEventListener('pointermove', (event) => {
-      if (!pointers.has(event.pointerId) || !gesture) return;
+      if (!pointers.has(event.pointerId) || !gesture) {
+        const id = event.target.closest('[data-network-id]')?.getAttribute('data-network-id'), edgeId = event.target.closest('[data-network-edge]')?.getAttribute('data-network-edge');
+        if (id) highlight(byId.get(id)); else if (edgeId) highlight(edgesById.get(edgeId), true); else clear();
+        return;
+      }
       const p = point(event); pointers.set(event.pointerId, { ...pointers.get(event.pointerId), ...p });
       if (gesture.type === 'pinch') {
         const [a, b] = [...pointers.values()], distance = Math.hypot(a.x - b.x, a.y - b.y), x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;

@@ -6,7 +6,7 @@ import { accountGroups, recordGroups, latestRecords, zoomFrame } from './chart-n
 import { layoutTreemap } from './treemap.js';
 import { FlowView } from './flow-view.js';
 import { NetworkView } from './network-view.js';
-import { candidateNodes, candidateContext, candidateDimension, findCandidates, buildCandidateFlow } from './candidate-overview.js';
+import { candidateNodes, candidateContext, candidateDimension, findCandidates, buildCandidateFlow, buildCandidateNetwork, expandCandidateNetwork, revealCandidateNetwork } from './candidate-overview.js';
 
 const $ = (id) => document.getElementById(id);
 const dataScope = document.body.dataset.scope || 'parties';
@@ -30,7 +30,13 @@ const relationOptions = candidates ? {
   note: 'Última prestação de cada conta de candidatura. Receitas e despesas são agregadas separadamente; as ligações não identificam qual receita financiou cada despesa.',
 } : {};
 const flowView = new FlowView($('flow-content'), partyColors, relationOptions);
-const networkView = new NetworkView($('network-content'), partyColors, relationOptions);
+const networkView = new NetworkView($('network-content'), partyColors, candidates ? {
+  ...relationOptions, buildGraph: buildCandidateNetwork,
+  backLabel: 'Desfazer última expansão do grafo',
+  instruction: 'Clique nos nós com + para expandi-los nesta rede. Selecione um candidato ou uma ligação para consultar os valores.',
+  canExplore: (entry) => Boolean(entry.navigation) && entry.navigation.level !== 'account',
+  nextContext: (entry, context, data) => expandCandidateNetwork(data, context, entry.navigation.id),
+} : {});
 const views = ['mosaic', 'flow', 'network'];
 const viewHashes = { mosaic: 'mosaico', flow: 'fluxo', network: 'grafo' };
 const viewFromLocation = () => location.hash ? views.find((view) => location.hash === `#${viewHashes[view]}`) : 'mosaic';
@@ -228,6 +234,11 @@ function renderPartyLegend() {
       const swatch = node('span', undefined, 'chart-swatch'); swatch.style.backgroundColor = entry.color; swatch.setAttribute('aria-hidden', 'true');
       button.append(swatch, node('span', entry.label)); button.setAttribute('aria-label', `Explorar candidaturas: ${entry.label}`);
       button.addEventListener('click', () => {
+        if (activeView === 'network') {
+          const context = networkView.frames.at(-1), next = expandCandidateNetwork(data, context, entry.id);
+          if (next !== context) networkView.navigate(next);
+          return;
+        }
         if (activeView !== 'mosaic') { relationView().navigate(candidateContext(entry)); return; }
         const state = mosaicStates.get(mosaicMetric); if (!state) return;
         state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic();
@@ -302,7 +313,12 @@ function renderCandidateSearch() {
     button.addEventListener('click', () => {
       const entry = candidateNodes([account], mosaicMetric, 'names')[0];
       $('candidate-search').value = ''; renderCandidateSearch();
-      if (activeView !== 'mosaic') relationView().navigate(candidateContext(entry));
+      if (activeView === 'network') {
+        const context = networkView.frames.at(-1), next = revealCandidateNetwork(data, context, account.id);
+        if (next !== context) networkView.navigate(next);
+        networkView.focusNode(account.id);
+      }
+      else if (activeView !== 'mosaic') relationView().navigate(candidateContext(entry));
       else {
         const state = mosaicStates.get(mosaicMetric); state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic(); state.advance(entry);
       }
