@@ -4,6 +4,7 @@ import { aggregateParties, chartValue } from './party-overview.js';
 import { TABLES, alphabetic } from './data.js';
 import { accountGroups, recordGroups, latestRecords, zoomFrame } from './chart-navigation.js';
 import { layoutTreemap } from './treemap.js';
+import { FlowView } from './flow-view.js';
 
 const $ = (id) => document.getElementById(id);
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -15,8 +16,9 @@ const timestamp = (value) => new Intl.DateTimeFormat('pt-BR', { dateStyle: 'shor
 let data, result, accountIndexPromise;
 const series = Object.entries(TABLES).map(([kind, definition]) => ({ kind, label: kind === 'receipts' ? 'Receitas declaradas' : definition.label }));
 const mosaicStates = new Map();
-let mosaicMetric = 'receipts';
+let mosaicMetric = 'receipts', activeView = 'mosaic';
 const partyColors = new Map();
+const flowView = new FlowView($('flow-content'), partyColors);
 const zoomCache = new WeakMap();
 const canZoom = (entry) => entry.level !== 'leaf' && entry.hasZoom !== false && entry.cents > 0;
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -36,12 +38,13 @@ async function load() {
     data = next;
     accountIndexPromise = undefined;
     mosaicStates.clear();
+    flowView.setData(data);
     $('publication-date').textContent = `Dados obtidos do TSE em ${timestamp(data.updatedAt)}`;
     render();
   } catch (error) {
     $('load-error').replaceChildren(node('p', `${error.message} Use “Atualizar” para tentar novamente.`)); $('load-error').hidden = false;
     $('publication-date').textContent = data ? `A atualização falhou. Continua visível a publicação de ${timestamp(data.updatedAt)}.` : 'Não foi possível carregar os dados.';
-    if (!data) $('mosaic-content').replaceChildren(node('p', 'Mosaico indisponível até o carregamento da fonte.', 'chart-placeholder'));
+    if (!data) for (const id of ['mosaic-content', 'flow-content']) $(id).replaceChildren(node('p', 'Gráfico indisponível até o carregamento da fonte.', 'chart-placeholder'));
   } finally { $('reload').disabled = false; }
 }
 function render() {
@@ -49,7 +52,7 @@ function render() {
   result = aggregateParties(data);
   result.parties.forEach((party, index) => partyColors.set(party.party, `hsl(${(index * 137.508 + 164) % 360} 48% ${index % 2 ? 43 : 36}%)`));
   renderPartyLegend();
-  renderMosaic();
+  if (activeView === 'mosaic') renderMosaic(); else flowView.render();
 }
 function colorAt(index) { return `hsl(${(index * 137.508 + 164) % 360} 48% ${index % 2 ? 43 : 36}%)`; }
 function decorate(nodes, level) { return nodes.map((entry, index) => ({ ...entry, level, color: colorAt(index) })); }
@@ -109,7 +112,7 @@ function rootFrame(item) {
   return { title: 'Todos os partidos', dimension: 'Participação por partido', nodes: result.parties.map((party) => ({ id: party.party, label: party.party, level: 'party', accounts: data.accounts.filter((account) => account.party === party.party), color: partyColors.get(party.party), ...chartValue(party, item) })) };
 }
 function renderMosaic(focus = false) {
-  if (!data) return;
+  if (!data || activeView !== 'mosaic') return;
   const item = series.find((entry) => entry.kind === mosaicMetric);
   let state = mosaicStates.get(item.kind);
   if (!state) { state = { frames: [rootFrame(item)], request: 0, loading: false, error: '' }; mosaicStates.set(item.kind, state); }
@@ -152,15 +155,15 @@ function renderMosaic(focus = false) {
     try {
       const next = await nextZoomFrame(source, item);
       if (request !== state.request || mosaicStates.get(item.kind) !== state) return;
-      if (next) { state.frames.push(next); if (mosaicMetric === item.kind) renderMosaic(true); }
+      if (next) { state.frames.push(next); if (activeView === 'mosaic' && mosaicMetric === item.kind) renderMosaic(true); }
       else markTerminal(container, 'data-tile-id', source);
     } catch (failure) {
       if (request === state.request && mosaicStates.get(item.kind) === state) {
         state.error = `${failure.message} Clique novamente no bloco para tentar outra vez.`;
-        if (mosaicMetric === item.kind) renderMosaic();
+        if (activeView === 'mosaic' && mosaicMetric === item.kind) renderMosaic();
       }
     } finally {
-      if (request === state.request) { state.loading = false; if (mosaicMetric === item.kind) container.setAttribute('aria-busy', 'false'); }
+      if (request === state.request) { state.loading = false; if (activeView === 'mosaic' && mosaicMetric === item.kind) container.setAttribute('aria-busy', 'false'); }
     }
   };
   state.show = show; state.advance = advance;
@@ -200,20 +203,45 @@ function renderPartyLegend() {
     const button = node('button', undefined, 'chart-key'); button.type = 'button';
     const swatch = node('span', undefined, 'chart-swatch'); swatch.style.backgroundColor = partyColors.get(party.party); swatch.setAttribute('aria-hidden', 'true');
     button.append(swatch, node('span', party.party)); button.dataset.party = party.party;
-    button.setAttribute('aria-label', `Explorar ${party.party} no mosaico`);
+    button.setAttribute('aria-label', `Explorar ${party.party} no ${activeView === 'mosaic' ? 'mosaico' : 'fluxo'}`);
     const show = () => {
       $('chart-detail').textContent = `${party.party} · ${series.map((item) => `${item.label}: ${exact(chartValue(party, item))}`).join(' · ')}`;
+      if (activeView === 'flow') { flowView.highlightParty?.(party.party); return; }
       const state = mosaicStates.get(mosaicMetric);
       if (state?.frames.length === 1) state.show(state.frames[0].nodes.find((entry) => entry.id === party.party));
     };
     button.addEventListener('pointerenter', show); button.addEventListener('focus', show);
     button.addEventListener('click', () => {
+      if (activeView === 'flow') { flowView.selectParty(party.party); return; }
       const state = mosaicStates.get(mosaicMetric); if (!state) return;
       state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic();
       state.advance(state.frames[0].nodes.find((entry) => entry.id === party.party));
     }); legend.append(button);
   }
 }
+function setView(view) {
+  activeView = view;
+  for (const name of ['mosaic', 'flow']) {
+    const button = $(`view-${name}`); button.setAttribute('aria-selected', String(name === view)); button.tabIndex = name === view ? 0 : -1;
+    $(`${name}-view`).hidden = name !== view;
+  }
+  $('legend-hint').textContent = view === 'mosaic' ? 'Clique na sigla para explorar o partido, inclusive blocos pequenos e itens sem área.' : 'Clique na sigla para ver as origens e as despesas do partido.';
+  $('party-legend').setAttribute('aria-label', `Partidos: explorar no ${view === 'mosaic' ? 'mosaico' : 'fluxo'}`);
+  if (result) renderPartyLegend();
+  if (view === 'mosaic') renderMosaic(); else flowView.render();
+}
+for (const view of ['mosaic', 'flow']) {
+  $(`view-${view}`).addEventListener('click', () => setView(view));
+  $(`view-${view}`).addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault(); const next = event.key === 'Home' ? 'mosaic' : event.key === 'End' ? 'flow' : activeView === 'mosaic' ? 'flow' : 'mosaic'; setView(next); $(`view-${next}`).focus();
+  });
+}
+for (const field of ['incoming', 'outgoing']) for (const button of $('flow-view').querySelectorAll(`[data-${field}]`)) button.addEventListener('click', () => {
+  flowView[field] = button.dataset[field];
+  for (const control of $('flow-view').querySelectorAll(`[data-${field}]`)) control.setAttribute('aria-pressed', String(control.dataset[field] === flowView[field]));
+  flowView.render();
+});
 $('reload').addEventListener('click', load);
 for (const button of $('mosaic-view').querySelectorAll('[data-metric]')) button.addEventListener('click', () => {
   mosaicMetric = button.dataset.metric;
@@ -221,5 +249,5 @@ for (const button of $('mosaic-view').querySelectorAll('[data-metric]')) button.
   renderMosaic();
 });
 let mosaicResizeTimer;
-window.addEventListener('resize', () => { clearTimeout(mosaicResizeTimer); mosaicResizeTimer = setTimeout(() => renderMosaic(), 100); });
+window.addEventListener('resize', () => { clearTimeout(mosaicResizeTimer); mosaicResizeTimer = setTimeout(() => activeView === 'mosaic' ? renderMosaic() : flowView.render(), 100); });
 load();

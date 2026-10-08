@@ -10,7 +10,8 @@ export function createPartyOverview(store) {
     partyName: account.partyName, uf: account.uf || 'Não informado', sphere: account.sphere || 'Não informada',
     statements: account.statements.map((statement) => {
       const summary = store.summary(account.id, statement.id);
-      return { ...statement, totals: summary.totals, sources: summary.sources, origins: summary.origins };
+      return { ...statement, totals: summary.totals, sources: summary.sources, origins: summary.origins,
+        contractedCategories: summary.contractedCategories, paidCategories: summary.paidCategories };
     }).sort((a, b) => dateKey(b.date).localeCompare(dateKey(a.date)) || priority(b.type) - priority(a.type) || alphabetic(a.id, b.id)),
   }));
   const unique = (values) => [...new Set(values)].sort(alphabetic);
