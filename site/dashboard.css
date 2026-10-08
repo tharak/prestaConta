@@ -101,11 +101,11 @@
 .network-plus{font-size:16px;font-weight:700;fill:white;pointer-events:none}
 .network-label{font:14px 'DM Sans',system-ui,sans-serif;font-weight:600;fill:var(--ink);paint-order:stroke;stroke:#fcfdfc;stroke-width:5px;stroke-linejoin:round;pointer-events:none}
 .network-graph.has-highlight .network-edge-line{opacity:.025}
-.network-graph.has-highlight .network-edge.is-active .network-edge-line{opacity:.85;stroke-width:2.8}
+.network-graph.has-highlight .network-edge.is-active .network-edge-line{opacity:.85}
 .network-graph.has-highlight .network-node{opacity:.25}
 .network-graph.has-highlight .network-node.is-active{opacity:1}
 .network-node:focus-visible .network-halo,.network-node:hover .network-halo{stroke:var(--accent);stroke-width:3}
-.network-edge:focus-visible .network-edge-line{opacity:1;stroke-width:3}
+.network-edge:focus-visible .network-edge-line{opacity:1}
 .network-key{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px;font-size:.75rem;color:var(--muted);margin-top:10px}
 .network-key>span{display:flex;align-items:center;gap:7px}
 @media(max-width:700px){.network-viewport{height:560px}.network-tools{top:8px;left:8px}.view-switch button{padding:8px 15px}.network-key{gap:8px 12px}}

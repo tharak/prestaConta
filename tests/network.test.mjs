@@ -4,10 +4,33 @@ import { AccountStore } from '../site/data.js';
 import { createAccountOverview } from '../site/party-overview.js';
 import { buildFlow } from '../site/flow-data.js';
 import { buildCandidateFlow } from '../site/candidate-overview.js';
-import { layoutNetwork, networkPath } from '../site/network-layout.js';
+import { layoutNetwork, networkPath, networkLineWidths, networkNodeRadii } from '../site/network-layout.js';
 import { csv, receipt, paid } from './fixtures.mjs';
 
 function ingest(store, kind, records) { const reader = store.reader(kind, `${kind}.csv`); reader.push(csv(records)); reader.finish(); }
+
+test('área dos círculos representa receitas recebidas, sem misturar despesas ou fabricar entradas ausentes', () => {
+  const nodes = [{ id: 'maior', inCents: 10000, outCents: 0 }, { id: 'menor', inCents: 2500, outCents: 999999 }, { id: 'zero', inCents: 0 }, { id: 'negativo', inCents: -10000 }, { id: 'pequeno', inCents: 1 }];
+  const before = structuredClone(nodes), { maxCents, radii } = networkNodeRadii(nodes);
+  assert.equal(maxCents, 10000); assert.equal(radii.get('maior'), 32); assert.equal(radii.get('menor'), 16);
+  assert.equal(radii.get('maior') ** 2 / radii.get('menor') ** 2, 4);
+  for (const id of ['zero', 'negativo', 'pequeno']) assert.equal(radii.get(id), 6);
+  assert.deepEqual(nodes, before);
+  assert.equal(networkNodeRadii([{ id: 'sem-receita', inCents: 0, outCents: 200 }]).radii.get('sem-receita'), 6);
+  assert.equal(networkNodeRadii([]).maxCents, 0);
+});
+
+test('espessura usa uma escala comum para receitas e despesas e conserva zero, sinais e valores pequenos', () => {
+  const links = [{ id: 'receita', cents: 100000 }, { id: 'despesa', cents: 50000 }, { id: 'igual', cents: 100000 }, { id: 'devolucao', cents: -50000 }, { id: 'pequeno', cents: 1 }, { id: 'zero', cents: 0, missing: 1 }];
+  const before = structuredClone(links), { maxCents, widths } = networkLineWidths(links);
+  assert.equal(maxCents, 100000);
+  assert.equal(widths.get('receita'), 12); assert.equal(widths.get('igual'), 12);
+  assert.equal(widths.get('despesa'), 6); assert.equal(widths.get('devolucao'), 6);
+  assert.equal(widths.get('pequeno'), .75); assert.equal(widths.get('zero'), 0);
+  assert.deepEqual(links, before);
+  assert.equal(networkLineWidths([{ id: 'zero', cents: 0 }]).widths.get('zero'), 0);
+  assert.equal(networkLineWidths([]).maxCents, 0);
+});
 
 test('grafo preserva nós, direções, sinais e valores parciais do resumo', () => {
   const store = new AccountStore('parties');

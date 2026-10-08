@@ -1,6 +1,6 @@
 import { FlowView } from './flow-view.js';
 import { buildFlow } from './flow-data.js';
-import { layoutNetwork, networkPath } from './network-layout.js';
+import { layoutNetwork, networkPath, networkLineWidths } from './network-layout.js';
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const exact = (entry) => entry.available === false ? 'Não disponível' : `${entry.count ? brl.format(entry.cents / 100) : 'Sem lançamentos'}${entry.missing ? ` · parcial (${entry.missing.toLocaleString('pt-BR')} registro(s) sem valor)` : ''}`;
@@ -30,6 +30,7 @@ export class NetworkView extends FlowView {
     const cached = this.layouts.get(context);
     if (!cached.has(key)) cached.set(key, { layout: layoutNetwork(graph), camera: null });
     const state = cached.get(key), { layout } = state;
+    const lineWidths = networkLineWidths(layout.links);
     const byId = new Map(layout.nodes.map((entry) => [entry.id, entry]));
     const outgoingLabel = this.outgoing === 'paid' ? 'Despesas pagas' : 'Despesas contratadas';
     const toolbar = node('div', undefined, 'flow-toolbar');
@@ -52,7 +53,7 @@ export class NetworkView extends FlowView {
     this.container.replaceChildren(toolbar, viewport, detail);
     const width = viewport.clientWidth || 1000, height = viewport.clientHeight || 620;
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    const defs = svgNode('defs'), marker = svgNode('marker', { id: 'network-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 5, markerHeight: 5, orient: 'auto-start-reverse' });
+    const defs = svgNode('defs'), marker = svgNode('marker', { id: 'network-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 8, markerHeight: 8, markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse' });
     marker.append(svgNode('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: 'context-stroke' })); defs.append(marker); svg.append(defs);
     const world = svgNode('g'), edges = svgNode('g', { class: 'network-edges' }), nodes = svgNode('g', { class: 'network-nodes' });
     world.append(edges, nodes); svg.append(world);
@@ -60,7 +61,7 @@ export class NetworkView extends FlowView {
     const transform = () => { state.camera = camera; world.setAttribute('transform', `translate(${camera.x} ${camera.y}) scale(${camera.k})`); zoomLabel.textContent = `${Math.round(camera.k * 100)}%`; };
     const fit = () => {
       const minX = Math.min(0, ...layout.nodes.map((entry) => entry.x - 105)), maxX = Math.max(layout.width, ...layout.nodes.map((entry) => entry.x + 105));
-      const minY = Math.min(0, ...layout.nodes.map((entry) => entry.y - 25)), maxY = Math.max(layout.height, ...layout.nodes.map((entry) => entry.y + 72));
+      const minY = Math.min(0, ...layout.nodes.map((entry) => entry.y - entry.radius - 10)), maxY = Math.max(layout.height, ...layout.nodes.map((entry) => entry.y + entry.radius + 60));
       const k = Math.min((width - 32) / (maxX - minX), (height - 48) / (maxY - minY));
       camera = { k, x: (width - (maxX + minX) * k) / 2, y: (height - (maxY + minY) * k) / 2, width, height }; transform();
     };
@@ -94,7 +95,8 @@ export class NetworkView extends FlowView {
     for (const entry of layout.links) {
       const label = `${byId.get(entry.source).label} → ${byId.get(entry.target).label}: ${exact(entry)}`;
       const control = svgNode('g', { class: `network-edge${entry.cents < 0 ? ' is-negative' : ''}`, tabindex: 0, role: 'button', 'data-network-edge': entry.id, 'aria-label': label });
-      control.append(svgNode('title', {}, label), svgNode('path', { class: 'network-edge-hit', fill: 'none', 'stroke-width': 16 }), svgNode('path', { class: 'network-edge-line', fill: 'none', stroke: this.colors.get(entry.party) || '#367c72', 'stroke-width': 1.8, 'marker-end': 'url(#network-arrow)' }));
+      const thickness = lineWidths.widths.get(entry.id);
+      control.append(svgNode('title', {}, label), svgNode('path', { class: 'network-edge-hit', fill: 'none', 'stroke-width': 16 }), svgNode('path', { class: 'network-edge-line', fill: 'none', stroke: this.colors.get(entry.party) || '#367c72', 'stroke-width': thickness, ...(thickness ? { 'marker-end': 'url(#network-arrow)' } : {}) }));
       control.addEventListener('pointerenter', () => highlight(entry, true)); control.addEventListener('focus', () => highlight(entry, true)); control.addEventListener('click', () => highlight(entry, true));
       control.addEventListener('keydown', (event) => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); highlight(entry, true); } });
       edgeControls.push({ entry, control }); edges.append(control);
@@ -102,9 +104,9 @@ export class NetworkView extends FlowView {
     for (const entry of layout.nodes) {
       const explore = entry.side === 'party' && (this.options.canExplore ? this.options.canExplore(entry, context) : !context.party), interactive = explore || Boolean(entry.children);
       const control = svgNode('g', { tabindex: 0, role: 'button', class: 'network-node', 'data-network-id': entry.id, 'data-network-side': entry.side, 'aria-label': `${entry.label}: ${valueLabel(entry)}${interactive ? '. Abrir detalhes' : ''}` });
-      control.append(svgNode('title', {}, `${entry.label}: ${valueLabel(entry)}`), svgNode('rect', { x: -94, y: -20, width: 188, height: 85, rx: 6, class: 'network-node-hit' }), svgNode('circle', { r: entry.radius + 6, class: 'network-halo' }), svgNode('circle', { r: entry.radius, fill: entry.side === 'party' ? this.colors.get(entry.party) || '#367c72' : entry.side === 'incoming' ? '#0a695c' : '#ae803d', class: 'network-dot' }));
-      if (interactive) control.append(svgNode('text', { 'text-anchor': 'middle', y: 5, class: 'network-plus' }, '+'));
-      const text = svgNode('text', { y: 29, 'text-anchor': 'middle', class: 'network-label' });
+      control.append(svgNode('title', {}, `${entry.label}: ${valueLabel(entry)}`), svgNode('rect', { x: -94, y: -entry.radius - 8, width: 188, height: entry.radius * 2 + 64, rx: 6, class: 'network-node-hit' }), svgNode('circle', { r: entry.radius + 6, class: 'network-halo' }), svgNode('circle', { r: entry.radius, fill: entry.side === 'party' ? this.colors.get(entry.party) || '#367c72' : entry.side === 'incoming' ? '#0a695c' : '#ae803d', class: 'network-dot' }));
+      if (interactive) control.append(svgNode('text', { 'text-anchor': 'middle', y: 5, style: `font-size:${Math.min(16, entry.radius * 1.4)}px`, class: 'network-plus' }, '+'));
+      const text = svgNode('text', { y: entry.radius + 18, 'text-anchor': 'middle', class: 'network-label' });
       labelLines(entry.label).forEach((line, index) => text.append(svgNode('tspan', { x: 0, dy: index ? 16 : 0 }, line))); control.append(text);
       const activate = () => {
         highlight(entry);
@@ -172,7 +174,7 @@ export class NetworkView extends FlowView {
     for (const [label, color] of [[this.incoming === 'origins' ? 'Origens' : 'Fontes', '#0a695c'], [graph.centerTitle || 'Partidos', '#367c72'], ['Despesas', '#ae803d']]) {
       const key = node('span'); const swatch = node('span', undefined, 'chart-swatch'); swatch.style.backgroundColor = color; key.append(swatch, document.createTextNode(label)); legend.append(key);
     }
-    legend.append(node('span', 'Setas: direção dos lançamentos · valores na seleção'));
+    legend.append(node('span', 'Círculos centrais: total de receitas · linhas: valor de cada ligação'));
     this.container.append(legend);
     if (graph.missing) this.container.append(node('p', `Soma parcial: ${graph.missing.toLocaleString('pt-BR')} registro(s) sem valor.`, 'mosaic-note'));
     if (graph.hasNegative) this.container.append(node('p', 'Linhas tracejadas indicam valores negativos. A direção segue a categoria do lançamento; consulte o sinal na seleção.', 'mosaic-note'));

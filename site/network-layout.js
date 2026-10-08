@@ -1,13 +1,28 @@
-// Geometria independente dos valores: o grafo representa relações declaradas.
-// Nós e linhas têm tamanho constante; os montantes são consultados na seleção.
+// Linhas compartilham uma escala monetária para entradas e saídas.
+export function networkLineWidths(links) {
+  const maxCents = links.reduce((max, edge) => Math.max(max, Math.abs(edge.cents)), 0);
+  const scale = maxCents ? 12 / maxCents : 0;
+  // Uma largura mínima mantém valores pequenos visíveis. Zero continua zero;
+  // devoluções usam o módulo e preservam o sinal nos dados e no tracejado.
+  return { maxCents, widths: new Map(links.map((edge) => [edge.id, edge.cents ? Math.max(.75, Math.abs(edge.cents) * scale) : 0])) };
+}
+
+export function networkNodeRadii(nodes) {
+  const maxCents = nodes.reduce((max, entry) => Math.max(max, entry.inCents), 0);
+  // A área representa a receita conhecida. Um marcador mínimo permite
+  // selecionar contas pequenas, zeradas, negativas ou sem receitas disponíveis.
+  return { maxCents, radii: new Map(nodes.map((entry) => [entry.id, maxCents ? Math.max(6, 32 * Math.sqrt(Math.max(0, entry.inCents) / maxCents)) : 6])) };
+}
+
 export function layoutNetwork(graph) {
   const width = 1280, centerColumns = Math.min(3, graph.columns[1].length || 1);
-  const height = Math.max(560, ...graph.columns.map((rows, index) => (index === 1 ? Math.ceil(rows.length / centerColumns) : rows.length) * 84 + 130));
+  const nodeRadii = networkNodeRadii(graph.columns[1]);
+  const height = Math.max(560, ...graph.columns.map((rows, index) => (index === 1 ? Math.ceil(rows.length / centerColumns) * 136 : rows.length * 84) + 130));
   const nodes = graph.columns.flatMap((rows, side) => rows.map((entry, index) => {
     const columns = side === 1 ? centerColumns : 1, row = Math.floor(index / columns), count = Math.ceil(rows.length / columns);
     const x = side === 0 ? 160 : side === 2 ? 1120 : 640 + (index % columns - (columns - 1) / 2) * 190;
-    const y = (height - count * 84) / 2 + row * 84 + 22;
-    return { ...entry, x, y, anchorX: x, anchorY: y, radius: side === 1 ? 12 : 8 };
+    const slot = side === 1 ? 136 : 84, y = (height - count * slot) / 2 + row * slot + 22;
+    return { ...entry, x, y, anchorX: x, anchorY: y, radius: side === 1 ? nodeRadii.radii.get(entry.id) : 8 };
   }));
   const byId = new Map(nodes.map((entry) => [entry.id, entry]));
   const links = graph.links.map((edge) => {
@@ -26,9 +41,10 @@ export function layoutNetwork(graph) {
     }
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j], dx = b.x - a.x, dy = b.y - a.y;
-      if (Math.abs(dx) >= 176 || Math.abs(dy) >= 78) continue;
-      const vertical = Math.abs(dy) / 78 > Math.abs(dx) / 176;
-      const axis = vertical ? 'y' : 'x', gap = vertical ? dy : dx, limit = vertical ? 78 : 176;
+      const verticalLimit = a.radius + b.radius + 68;
+      if (Math.abs(dx) >= 176 || Math.abs(dy) >= verticalLimit) continue;
+      const vertical = Math.abs(dy) / verticalLimit > Math.abs(dx) / 176;
+      const axis = vertical ? 'y' : 'x', gap = vertical ? dy : dx, limit = vertical ? verticalLimit : 176;
       const push = Math.sign(gap || 1) * (limit - Math.abs(gap)) * .25;
       forces.get(a.id)[axis] -= push; forces.get(b.id)[axis] += push;
     }
