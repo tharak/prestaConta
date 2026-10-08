@@ -5,8 +5,11 @@ import { TABLES, alphabetic } from './data.js';
 import { accountGroups, recordGroups, latestRecords, zoomFrame } from './chart-navigation.js';
 import { layoutTreemap } from './treemap.js';
 import { FlowView } from './flow-view.js';
+import { candidateNodes, candidateContext, candidateDimension, findCandidates, buildCandidateFlow } from './candidate-overview.js';
 
 const $ = (id) => document.getElementById(id);
+const dataScope = document.body.dataset.scope || 'parties';
+const candidates = dataScope === 'candidates';
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const percent = new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 2 });
 const shareLabel = (share) => share > 0 && share < .0001 ? '< 0,01%' : percent.format(share);
@@ -18,7 +21,13 @@ const series = Object.entries(TABLES).map(([kind, definition]) => ({ kind, label
 const mosaicStates = new Map();
 let mosaicMetric = 'receipts', activeView = 'mosaic';
 const partyColors = new Map();
-const flowView = new FlowView($('flow-content'), partyColors);
+const flowView = new FlowView($('flow-content'), partyColors, candidates ? {
+  buildGraph: buildCandidateFlow, rootTitle: 'Todas as candidaturas', entities: 'candidaturas',
+  instruction: 'Passe o mouse ou toque para ver os valores. Clique em um cargo, estado ou grupo para explorar.',
+  canExplore: (entry, context) => Boolean(entry.navigation) && (entry.navigation.level !== 'account' || context.stage !== 'selected'),
+  nextContext: (entry) => candidateContext(entry.navigation),
+  note: 'Última prestação de cada conta de candidatura. Receitas e despesas são agregadas separadamente; as ligações não identificam qual receita financiou cada despesa.',
+} : {});
 const zoomCache = new WeakMap();
 const canZoom = (entry) => entry.level !== 'leaf' && entry.hasZoom !== false && entry.cents > 0;
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -32,15 +41,16 @@ async function load() {
   try {
     const root = new URL('./data/', import.meta.url);
     const manifest = await json(new URL('manifest.json', root));
-    if (manifest.version !== 1 || manifest.year !== config.year || !manifest.scopes?.parties) throw new Error('Publicação incompatível com esta página.');
-    const next = await json(new URL('parties/overview.json.gz', root));
-    if (next.version !== 1 || next.scope !== 'parties' || next.year !== config.year || !Array.isArray(next.accounts) || next.updatedAt !== manifest.scopes.parties.updatedAt) throw new Error('A publicação mudou durante a leitura. Recarregue para consultar uma versão completa.');
+    if (manifest.version !== 1 || manifest.year !== config.year || !manifest.scopes?.[dataScope]) throw new Error('Publicação incompatível com esta página.');
+    const next = await json(new URL(`${dataScope}/overview.json.gz`, root));
+    if (next.version !== 1 || next.scope !== dataScope || next.year !== config.year || !Array.isArray(next.accounts) || next.updatedAt !== manifest.scopes[dataScope].updatedAt) throw new Error('A publicação mudou durante a leitura. Recarregue para consultar uma versão completa.');
     data = next;
     accountIndexPromise = undefined;
     mosaicStates.clear();
     flowView.setData(data);
     $('publication-date').textContent = `Dados obtidos do TSE em ${timestamp(data.updatedAt)}`;
     render();
+    if (candidates) renderCandidateSearch();
   } catch (error) {
     $('load-error').replaceChildren(node('p', `${error.message} Use “Atualizar” para tentar novamente.`)); $('load-error').hidden = false;
     $('publication-date').textContent = data ? `A atualização falhou. Continua visível a publicação de ${timestamp(data.updatedAt)}.` : 'Não foi possível carregar os dados.';
@@ -58,8 +68,8 @@ function colorAt(index) { return `hsl(${(index * 137.508 + 164) % 360} 48% ${ind
 function decorate(nodes, level) { return nodes.map((entry, index) => ({ ...entry, level, color: colorAt(index) })); }
 async function accountIndex() {
   if (!accountIndexPromise) {
-    accountIndexPromise = json(new URL('./data/parties/index.json', import.meta.url)).then((index) => {
-      if (index.version !== 1 || index.scope !== 'parties' || index.year !== config.year || index.updatedAt !== data.updatedAt) throw new Error('A publicação mudou. Recarregue os dados antes de aprofundar a consulta.');
+    accountIndexPromise = json(new URL(`./data/${dataScope}/index.json`, import.meta.url)).then((index) => {
+      if (index.version !== 1 || index.scope !== dataScope || index.year !== config.year || index.updatedAt !== data.updatedAt) throw new Error('A publicação mudou. Recarregue os dados antes de aprofundar a consulta.');
       return new Map(index.accounts.map((account) => [account.id, account]));
     }).catch((error) => { accountIndexPromise = undefined; throw error; });
   }
@@ -67,6 +77,10 @@ async function accountIndex() {
 }
 async function nextFrame(entry, item) {
   const title = entry.label;
+  if (candidates && ['candidate-office', 'candidate-uf', 'candidate-group'].includes(entry.level)) {
+    const stage = entry.level === 'candidate-office' ? 'uf' : 'names';
+    return { title, dimension: candidateDimension(stage), nodes: candidateNodes(entry.accounts, item.kind, stage) };
+  }
   if (entry.level === 'party') return { title, dimension: 'Órgãos por esfera', nodes: decorate(accountGroups(entry.accounts, item.kind, 'sphere'), 'sphere') };
   if (entry.level === 'sphere') return { title, dimension: 'Órgãos por estado', nodes: decorate(accountGroups(entry.accounts, item.kind, 'uf'), 'uf') };
   if (entry.level === 'uf') {
@@ -80,7 +94,7 @@ async function nextFrame(entry, item) {
   if (entry.level === 'account') {
     const index = await accountIndex(); const account = index.get(entry.id);
     if (!account || !/^[A-Za-z0-9_-]+\.json\.gz$/.test(account.filename)) throw new Error('Conta indisponível na publicação.');
-    const document = await json(new URL(`./data/parties/${account.filename}`, import.meta.url));
+    const document = await json(new URL(`./data/${dataScope}/${account.filename}`, import.meta.url));
     if (document.version !== 1 || document.accountId !== entry.id || document.updatedAt !== data.updatedAt) throw new Error('A publicação mudou. Recarregue os dados antes de consultar esta conta.');
     const records = latestRecords(document, entry.accounts[0].statements[0], item.kind);
     const cents = records.reduce((sum, record) => sum + (record.cents ?? 0), 0);
@@ -109,6 +123,7 @@ function markTerminal(container, attribute, entry) {
   });
 }
 function rootFrame(item) {
+  if (candidates) return { title: 'Todas as candidaturas', dimension: candidateDimension('office'), nodes: candidateNodes(data.accounts, item.kind) };
   return { title: 'Todos os partidos', dimension: 'Participação por partido', nodes: result.parties.map((party) => ({ id: party.party, label: party.party, level: 'party', accounts: data.accounts.filter((account) => account.party === party.party), color: partyColors.get(party.party), ...chartValue(party, item) })) };
 }
 function renderMosaic(focus = false) {
@@ -144,7 +159,7 @@ function renderMosaic(focus = false) {
   const error = node('p', state.error, 'error'); error.hidden = !state.error; error.setAttribute('role', 'alert');
   const show = (entry) => {
     detail.replaceChildren(node('strong', entry.label), document.createTextNode(` · ${exact(entry)}${layout.status === 'ready' && entry.cents > 0 ? ` · ${shareLabel(entry.cents / layout.total)}` : ''}`));
-    if (entry.accounts) detail.append(document.createTextNode(` · ${number(entry.accounts.length)} conta(s) de órgãos`));
+    if (entry.accounts) detail.append(document.createTextNode(` · ${number(entry.accounts.length)} conta(s) ${candidates ? 'de candidaturas' : 'de órgãos'}`));
     map.querySelectorAll('[data-tile-id]').forEach((tile) => tile.classList.toggle('is-active', tile.dataset.tileId === entry.id));
   };
   const advance = async (entry) => {
@@ -198,6 +213,21 @@ function renderMosaic(focus = false) {
   if (focus) map.focus({ preventScroll: true });
 }
 function renderPartyLegend() {
+  if (candidates) {
+    const legend = $('party-legend'); legend.replaceChildren();
+    for (const entry of candidateNodes(data.accounts, mosaicMetric)) {
+      const button = node('button', undefined, 'chart-key'); button.type = 'button'; button.dataset.office = entry.label;
+      const swatch = node('span', undefined, 'chart-swatch'); swatch.style.backgroundColor = entry.color; swatch.setAttribute('aria-hidden', 'true');
+      button.append(swatch, node('span', entry.label)); button.setAttribute('aria-label', `Explorar candidaturas: ${entry.label}`);
+      button.addEventListener('click', () => {
+        if (activeView === 'flow') { flowView.navigate(candidateContext(entry)); return; }
+        const state = mosaicStates.get(mosaicMetric); if (!state) return;
+        state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic();
+        state.advance(state.frames[0].nodes.find((part) => part.id === entry.id));
+      }); legend.append(button);
+    }
+    return;
+  }
   const legend = $('party-legend'); legend.replaceChildren();
   for (const party of result.parties) {
     const button = node('button', undefined, 'chart-key'); button.type = 'button';
@@ -225,8 +255,8 @@ function setView(view) {
     const button = $(`view-${name}`); button.setAttribute('aria-selected', String(name === view)); button.tabIndex = name === view ? 0 : -1;
     $(`${name}-view`).hidden = name !== view;
   }
-  $('legend-hint').textContent = view === 'mosaic' ? 'Clique na sigla para explorar o partido, inclusive blocos pequenos e itens sem área.' : 'Clique na sigla para ver as origens e as despesas do partido.';
-  $('party-legend').setAttribute('aria-label', `Partidos: explorar no ${view === 'mosaic' ? 'mosaico' : 'fluxo'}`);
+  $('legend-hint').textContent = candidates ? 'Clique no cargo para explorar suas candidaturas.' : view === 'mosaic' ? 'Clique na sigla para explorar o partido, inclusive blocos pequenos e itens sem área.' : 'Clique na sigla para ver as origens e as despesas do partido.';
+  $('party-legend').setAttribute('aria-label', `${candidates ? 'Cargos' : 'Partidos'}: explorar no ${view === 'mosaic' ? 'mosaico' : 'fluxo'}`);
   if (result) renderPartyLegend();
   if (view === 'mosaic') renderMosaic(); else flowView.render();
 }
@@ -242,6 +272,37 @@ for (const field of ['incoming', 'outgoing']) for (const button of $('flow-view'
   for (const control of $('flow-view').querySelectorAll(`[data-${field}]`)) control.setAttribute('aria-pressed', String(control.dataset[field] === flowView[field]));
   flowView.render();
 });
+let searchPage = 0;
+function renderCandidateSearch() {
+  const query = $('candidate-search').value;
+  const results = data ? findCandidates(data.accounts, query) : [];
+  const size = 12, pages = Math.ceil(results.length / size);
+  searchPage = Math.max(0, Math.min(searchPage, pages - 1));
+  $('candidate-search-results').hidden = !query.trim();
+  $('candidate-search-count').textContent = data ? `${number(results.length)} conta(s) encontrada(s)` : 'Carregando as candidaturas…';
+  const matches = $('candidate-matches'); matches.replaceChildren();
+  for (const account of results.slice(searchPage * size, (searchPage + 1) * size)) {
+    const button = node('button', undefined, 'candidate-match'); button.type = 'button'; button.dataset.candidateId = account.id;
+    button.append(node('strong', account.name || `Prestador ${account.prestador}`), node('span', `${account.office} · ${account.uf} · ${account.party} · ${account.number || 'Sem número'}`));
+    button.addEventListener('click', () => {
+      const entry = candidateNodes([account], mosaicMetric, 'names')[0];
+      $('candidate-search').value = ''; renderCandidateSearch();
+      if (activeView === 'flow') flowView.navigate(candidateContext(entry));
+      else {
+        const state = mosaicStates.get(mosaicMetric); state.request++; state.loading = false; state.error = ''; state.frames.splice(1); renderMosaic(); state.advance(entry);
+      }
+    }); matches.append(button);
+  }
+  $('candidate-search-pagination').hidden = pages <= 1;
+  $('candidate-search-page').textContent = `${searchPage + 1} / ${Math.max(1, pages)}`;
+  $('candidate-search-prev').disabled = searchPage === 0; $('candidate-search-next').disabled = searchPage + 1 >= pages;
+}
+if (candidates) {
+  $('candidate-finder').hidden = false;
+  $('candidate-search').addEventListener('input', () => { searchPage = 0; renderCandidateSearch(); });
+  $('candidate-search-prev').addEventListener('click', () => { searchPage--; renderCandidateSearch(); });
+  $('candidate-search-next').addEventListener('click', () => { searchPage++; renderCandidateSearch(); });
+}
 $('reload').addEventListener('click', load);
 for (const button of $('mosaic-view').querySelectorAll('[data-metric]')) button.addEventListener('click', () => {
   mosaicMetric = button.dataset.metric;

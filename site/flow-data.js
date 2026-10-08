@@ -8,7 +8,7 @@ const add = (a, b) => {
 
 // Ligações são somas declaradas em cada lado do partido, não uma conciliação
 // entre doação e pagamento. Receitas e despesas não precisam ter o mesmo total.
-export function buildFlow(data, { party = null, incoming = 'origins', outgoing = 'paid', expanded = [] } = {}) {
+export function buildFlow(data, { party = null, incoming = 'origins', outgoing = 'paid', expanded = [], centerLabels = new Map() } = {}) {
   if (!['sources', 'origins'].includes(incoming) || !['paid', 'contracted'].includes(outgoing)) throw new Error('Medida de fluxo inválida.');
   const parties = new Map(), groups = [new Map(), new Map()], edges = new Map();
   const totals = { receipts: { cents: 0, count: 0, missing: 0, available: Boolean(data.tables.receipts) },
@@ -17,7 +17,7 @@ export function buildFlow(data, { party = null, incoming = 'origins', outgoing =
   for (const account of data.accounts) {
     if (party && account.party !== party) continue;
     const statement = account.statements[0]; if (!statement) continue;
-    const center = parties.get(account.party) || { id: JSON.stringify(['party', account.party]), label: account.party, side: 'party', party: account.party, inCents: 0, outCents: 0, count: 0, missing: 0 };
+    const center = parties.get(account.party) || { id: JSON.stringify(['party', account.party]), label: centerLabels.get(account.party) || account.party, side: 'party', party: account.party, inCents: 0, outCents: 0, count: 0, missing: 0 };
     parties.set(account.party, center);
     for (const [side, kind, field, name] of [[0, 'receipts', incoming, 'receipts'], [1, outgoing, `${outgoing}Categories`, 'outgoing']]) {
       const total = statement.totals[kind];

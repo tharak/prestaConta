@@ -6,7 +6,13 @@ const add = (a, b) => { const value = a + b; if (!Number.isSafeInteger(value)) t
 
 export function createPartyOverview(store) {
   if (store.scope !== 'parties') throw new Error('A visão geral exige a base de órgãos partidários.');
+  return createAccountOverview(store);
+}
+
+export function createAccountOverview(store) {
+  if (!['parties', 'candidates'].includes(store.scope)) throw new Error('Base de contas não reconhecida.');
   const accounts = store.list().map((account) => ({ id: account.id, party: account.party || 'Não informado',
+    ...(store.scope === 'candidates' ? { name: account.name, candidateId: account.candidateId, prestador: account.prestador, office: account.office || 'Cargo não informado', number: account.number, locality: account.locality } : {}),
     partyName: account.partyName, uf: account.uf || 'Não informado', sphere: account.sphere || 'Não informada',
     statements: account.statements.map((statement) => {
       const summary = store.summary(account.id, statement.id);
@@ -15,8 +21,8 @@ export function createPartyOverview(store) {
     }).sort((a, b) => dateKey(b.date).localeCompare(dateKey(a.date)) || priority(b.type) - priority(a.type) || alphabetic(a.id, b.id)),
   }));
   const unique = (values) => [...new Set(values)].sort(alphabetic);
-  return { version: 1, year: store.year, scope: 'parties', updatedAt: store.loadedAt, source: store.source, tables: store.metadata(),
-    options: { uf: unique(accounts.map((a) => a.uf)), sphere: unique(accounts.map((a) => a.sphere)),
+  return { version: 1, year: store.year, scope: store.scope, updatedAt: store.loadedAt, source: store.source, tables: store.metadata(),
+    options: { ...(store.scope === 'candidates' ? { office: unique(accounts.map((a) => a.office)) } : {}), uf: unique(accounts.map((a) => a.uf)), sphere: unique(accounts.map((a) => a.sphere)),
       type: unique(accounts.flatMap((a) => a.statements.map((s) => s.type))), turn: unique(accounts.flatMap((a) => a.statements.map((s) => s.turn))) }, accounts };
 }
 

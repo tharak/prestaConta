@@ -2,13 +2,14 @@
 // não aumenta a espessura monetária de nós ou ligações pequenas.
 export function layoutFlow(graph, width = 1160) {
   if (!Number.isFinite(width) || width < 600) throw new Error('Largura inválida para o fluxo.');
-  const height = Math.max(540, ...graph.columns.map((column, index) => column.length * (index === 1 ? 32 : 62) + 280));
+  const centerSlot = graph.centerSlot || 32;
+  const height = Math.max(540, ...graph.columns.map((column, index) => column.length * (index === 1 ? centerSlot : 62) + 280));
   const sums = graph.columns.map((column) => column.reduce((sum, entry) => sum + (entry.side === 'party' ? Math.max(0, entry.inCents, entry.outCents) : Math.max(0, entry.cents)), 0));
-  const scale = Math.min(...graph.columns.map((column, index) => sums[index] > 0 ? (height - 100 - column.length * (index === 1 ? 32 : 62)) / sums[index] : Infinity));
+  const scale = Math.min(...graph.columns.map((column, index) => sums[index] > 0 ? (height - 100 - column.length * (index === 1 ? centerSlot : 62)) / sums[index] : Infinity));
   const unit = Number.isFinite(scale) ? Math.max(0, scale) : 0;
   const positions = [width * .265, width * .5, width * .735], nodes = [], byId = new Map();
   graph.columns.forEach((column, index) => {
-    const slot = index === 1 ? 32 : 62;
+    const slot = index === 1 ? centerSlot : 62;
     const used = sums[index] * unit + column.length * slot;
     let y = 65 + (height - 80 - used) / 2;
     for (const entry of column) {

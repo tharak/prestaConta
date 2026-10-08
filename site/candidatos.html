@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Visão geral das receitas, origens dos recursos e despesas declaradas pelas candidaturas ao TSE em 2026.">
+  <meta name="theme-color" content="#103d46"><title>PrestaConta · Visão dos candidatos</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23103d46'/%3E%3Cpath d='M9 8h10a6 6 0 010 12h-5v5H9zm5 5v2h5a1 1 0 000-2z' fill='%238be0ca'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./dashboard.css"><script type="module" src="./dashboard.js"></script>
+</head>
+<body data-scope="candidates">
+  <a class="skip-link" href="#overview">Ir para os gráficos</a>
+  <main>
+    <section id="overview" class="chart-card card" tabindex="-1" aria-labelledby="chart-title">
+      <div class="chart-heading"><h1 id="chart-title">Finanças dos candidatos</h1><span class="chart-brand">PrestaConta · Eleições 2026</span></div>
+      <nav class="scope-nav" aria-label="Base de contas"><a href="./">Partidos</a><a href="./candidatos.html" aria-current="page">Candidatos</a></nav>
+      <div id="candidate-finder" class="candidate-finder" hidden><label for="candidate-search" class="sr-only">Buscar candidato por nome, número, partido, cargo ou estado</label><input id="candidate-search" type="search" placeholder="Buscar candidato por nome ou número…" aria-controls="candidate-search-results"><div id="candidate-search-results" class="candidate-search-results" hidden><p id="candidate-search-count" role="status" aria-live="polite"></p><div id="candidate-matches" class="candidate-matches"></div><div id="candidate-search-pagination" class="list-pagination" hidden><button id="candidate-search-prev" class="secondary" type="button">Anterior</button><span id="candidate-search-page"></span><button id="candidate-search-next" class="secondary" type="button">Próxima</button></div></div></div>
+      <div class="view-switch" role="tablist" aria-label="Visualização"><button id="view-mosaic" type="button" role="tab" aria-selected="true" aria-controls="mosaic-view">Mosaico</button><button id="view-flow" type="button" role="tab" aria-selected="false" aria-controls="flow-view" tabindex="-1">Fluxo</button></div>
+      <div id="load-error" class="error" role="alert" hidden></div>
+      <div id="mosaic-view" role="tabpanel" aria-labelledby="view-mosaic"><div class="metric-switch" role="group" aria-label="Medida representada pela área dos blocos"><button type="button" data-metric="receipts" aria-pressed="true">Receitas declaradas</button><button type="button" data-metric="contracted" aria-pressed="false">Despesas contratadas</button><button type="button" data-metric="paid" aria-pressed="false">Despesas pagas</button></div><div id="mosaic-content"><p class="chart-placeholder">Carregando as candidaturas…</p></div></div>
+      <div id="flow-view" role="tabpanel" aria-labelledby="view-flow" hidden><div class="flow-controls"><div class="metric-switch" role="group" aria-label="Entradas do fluxo"><button type="button" data-incoming="origins" aria-pressed="true">Origens dos recursos</button><button type="button" data-incoming="sources" aria-pressed="false">Fontes dos recursos</button></div><div class="metric-switch" role="group" aria-label="Saídas do fluxo"><button type="button" data-outgoing="paid" aria-pressed="true">Despesas pagas</button><button type="button" data-outgoing="contracted" aria-pressed="false">Despesas contratadas</button></div></div><div id="flow-content"><p class="chart-placeholder">Carregando as candidaturas…</p></div></div>
+      <div class="party-legend-heading"><h2>Explorar por cargo</h2><p id="legend-hint">Clique no cargo para explorar suas candidaturas.</p></div>
+      <div id="party-legend" class="party-legend" role="group" aria-label="Cargos: explorar no mosaico"></div>
+      <div id="chart-detail" class="sr-only" role="status" aria-live="polite">Clique nos blocos para explorar os dados.</div>
+      <p class="chart-source"><a href="https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-2026" target="_blank" rel="noopener noreferrer" title="Última prestação de cada conta de candidatura presente nos arquivos do TSE. Receitas podem incluir dinheiro e bens ou serviços estimáveis.">Fonte: TSE</a><span id="publication-date">Carregando a publicação…</span><button id="reload" class="text-button" type="button">Atualizar</button></p>
+    </section>
+  </main>
+</body>
+</html>

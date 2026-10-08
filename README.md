@@ -1,6 +1,6 @@
 # PrestaConta
 
-Página em português com visão geral dos órgãos partidários nas eleições de 2026. O gráfico inicial reúne os totais de cada partido e as categorias de origem das receitas; a consulta de contas e candidaturas fica em `contas.html`. **GitHub Actions busca os arquivos atuais no TSE diariamente**, processa as contas e publica uma versão datada no **GitHub Pages**. Nenhum dado eleitoral é gravado no histórico Git. Os dados processados existem apenas na publicação. A tela inicial consulta um resumo compactado dos órgãos; a consulta individual carrega cada conta sob demanda.
+Página em português com visões gerais dos órgãos partidários e dos candidatos nas eleições de 2026. O gráfico inicial reúne os totais de cada partido e as categorias de origem das receitas; a visão dos candidatos fica em `candidatos.html` e a consulta individual de contas em `contas.html`. **GitHub Actions busca os arquivos atuais no TSE diariamente**, processa as contas e publica uma versão datada no **GitHub Pages**. Nenhum dado eleitoral é gravado no histórico Git. Os dados processados existem apenas na publicação. As duas visões consultam resumos compactados de suas respectivas bases; a consulta individual carrega cada conta sob demanda.
 
 Fonte primária: [Prestação de Contas Eleitorais — 2026, TSE](https://dadosabertos.tse.jus.br/dataset/prestacao-de-contas-eleitorais-2026). A fonte identifica a licença como Creative Commons Atribuição e o sistema de origem como SPCE.
 
@@ -91,6 +91,14 @@ O agrupamento inclui todos os órgãos por padrão. São valores **brutos de mov
 
 Por conta, considera-se apenas a prestação mais recente compatível com o recorte, pela data; em empate, final precede parcial e relatório financeiro. A opção inicial pode reunir tipos e datas diferentes entre órgãos; a cobertura é explicitada. `Parcial` e `PARCIAL` são unificados para associar os três CSV da mesma prestação. Datas e turnos distintos permanecem separados na consulta individual. Valores ausentes são identificados e a soma conhecida é marcada como parcial; tabelas sem lançamentos não viram zero. Categorias sem lançamentos não recebem zero presumido quando o total de receitas é incompleto.
 
+## Visão dos candidatos
+
+`candidatos.html` reutiliza o painel de mosaico e fluxo, com navegação entre Partidos e Candidatos. O mosaico mostra receitas declaradas, despesas contratadas ou despesas pagas. A visão geral agrupa por cargo; o clique abre os estados e depois as candidaturas. Quando um estado contém muitas contas, grupos alfabéticos de até 12 blocos por nível permitem chegar a cada candidatura sem excluir nomes por valor. A busca por nome, número, partido, cargo ou UF dá acesso direto, com resultados paginados e homônimos mantidos em contas distintas. Itens sem área permanecem acessíveis pela legenda e pela busca.
+
+Os detalhes seguem fontes → origens → remetentes nas receitas e categorias → fornecedores nas despesas, carregados sob demanda. O botão de voltar retorna um nível; cada medida mantém seu caminho. O fluxo segue a mesma navegação por cargo, estado, grupo e candidatura e mostra origens/fontes → candidaturas → categorias das despesas, com pagamentos separados dos contratos. As categorias pequenas são expansíveis. Não são criadas ligações entre as bases de partidos e candidatos nesta etapa.
+
+O resumo dos candidatos é publicado com os mesmos totais, categorias e data dos arquivos individuais. Usa somente a última prestação de cada conta, incluindo a normalização de maiúsculas e minúsculas no tipo; datas e turnos distintos continuam separados. Identificadores de eleição, prestador e candidatura, nome, número, cargo, UF e partido são preservados para a consulta. Os totais abrangem apenas contas presentes nos arquivos oficiais, e não um cadastro completo de candidatos registrados.
+
 ## Interpretação
 
 - Receitas, despesas contratadas e despesas pagas são bases distintas. Nunca somamos contratado e pago nem calculamos saldo a partir dessas tabelas.
@@ -113,4 +121,4 @@ Por conta, considera-se apenas a prestação mais recente compatível com o reco
 
 Os testes de parser, integridade dos ZIP, associação de pagamentos, prestações separadas, atualização de publicação e relay são independentes da disponibilidade do TSE. Valide uma execução completa e o comportamento da página publicada antes de compartilhar o site.
 
-Validação local realizada com os arquivos oficiais obtidos em 7 de outubro de 2026: processamento das duas bases, 61 testes automatizados e navegação de candidaturas e órgãos partidários no navegador, incluindo mosaico e fluxo por partido, proporções e ausência de sobreposição dos retângulos, alternância de medidas e abas, navegação por blocos até fontes, origens e contrapartes, conservação dos totais entre níveis, legenda, retorno de um nível pelo botão e pelo caminho de navegação, consulta de contas, tela móvel e texto ampliado em 200%. O navegador de verificação não ofereceu WebMCP; a validação dessa integração opcional ficou indisponível, sem afetar a interface.
+Validação local realizada com os arquivos oficiais obtidos em 7 de outubro de 2026: processamento das duas bases, 67 testes automatizados e navegação de candidaturas e órgãos partidários no navegador, incluindo mosaico e fluxo por partido e candidatura, busca e grupos alfabéticos de candidatos, proporções e ausência de sobreposição dos retângulos, alternância de medidas e abas, navegação por blocos até fontes, origens e contrapartes, conservação dos totais entre níveis, legenda, retorno de um nível pelo botão e pelo caminho de navegação, consulta de contas, tela móvel e texto ampliado em 200%. O navegador de verificação não ofereceu WebMCP; a validação dessa integração opcional ficou indisponível, sem afetar a interface.

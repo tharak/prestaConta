@@ -26,6 +26,7 @@ export function accountGroups(accounts, kind, field) {
     const total = account.statements[0]?.totals[kind];
     if (total?.available && total.count) {
       group.cents = (group.cents ?? 0) + total.knownCents;
+      if (!Number.isSafeInteger(group.cents)) throw new Error('Soma monetária excede o limite de precisão.');
       group.missing += total.missing; group.count += total.count;
     }
     groups.set(label, group);

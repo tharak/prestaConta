@@ -5,15 +5,15 @@ import { config } from '../site/config.js';
 import { AccountStore, parseCsvStream, selectTables } from '../site/data.js';
 import { ZipSource } from '../site/zip.js';
 import { buildBenchmarks } from '../site/analytics.js';
-import { createPartyOverview } from '../site/party-overview.js';
+import { createAccountOverview } from '../site/party-overview.js';
 
 export async function publishStore(store, destination) {
   await mkdir(destination, { recursive: true });
   const accounts = store.list();
   const index = { version: 1, year: store.year, scope: store.scope, updatedAt: store.loadedAt, source: store.source, tables: store.metadata(), options: store.options(), accounts: [] };
-  if (store.scope === 'parties') {
+  if (['parties', 'candidates'].includes(store.scope)) {
     index.overview = 'overview.json.gz';
-    await writeFile(join(destination, index.overview), gzipSync(JSON.stringify(createPartyOverview(store))));
+    await writeFile(join(destination, index.overview), gzipSync(JSON.stringify(createAccountOverview(store))));
   }
   if (store.scope === 'candidates') {
     index.benchmarks = 'benchmarks.json.gz';
